@@ -7,8 +7,8 @@ benchmark(R, D) ->
     Start = erlang:system_time(millisecond),
     P1 ! {init, self(), P2, R},
     P2 ! {init, self(), P1, R},
-    imb:finalize(P1),
-    imb:finalize(P2),
+    %imb:finalize(P1),
+    %imb:finalize(P2),
     End = erlang:system_time(millisecond),
     io:format("Total time taken: ~f seconds~n", [(End-Start)/1000]).
 
