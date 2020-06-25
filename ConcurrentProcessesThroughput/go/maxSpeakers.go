@@ -5,20 +5,21 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"time"
 	"sync/atomic"
+	"time"
 )
 
 var n = flag.Int("n", 1e5, "Number of goroutines to create")
 
 var ch = make(chan byte)
-var starter = make(chan byte, 1000) 
+var starter = make(chan byte, 1000)
 var counter = 0
-var aggregator = make(chan uint64, 100) 
+var aggregator = make(chan uint64, 100)
+
 func client(mailbox chan []byte) {
 	message := make([]byte, 500)
 	for {
-		copy(message, <- mailbox)
+		copy(message, <-mailbox)
 		mailbox <- message
 	}
 }
@@ -33,10 +34,10 @@ func server(aggregator chan uint64, message []byte) {
 
 		mailbox <- message
 		copy(message[:], <-mailbox)
-		
+
 		i++
 		if i == 10000 {
-			aggregator <- i  //(max unread messages are bound to the buffer size of the channel)
+			aggregator <- i //(max unread messages are bound to the buffer size of the channel)
 			i = 0
 		}
 	}
@@ -56,7 +57,7 @@ func main() {
 
 	message := make([]byte, 500)
 	for i, _ := range message {
-    	message[i] = byte(i)
+		message[i] = byte(i)
 	}
 
 	////////////////////////////// CREATING THE GOROUTINES ///////////////////////////////
@@ -83,9 +84,9 @@ func main() {
 
 	var totalMessages uint64 = 0
 
-	go func(){
-		for{
-			atomic.AddUint64(&totalMessages, <- aggregator)
+	go func() {
+		for {
+			atomic.AddUint64(&totalMessages, <-aggregator)
 		}
 	}()
 
@@ -93,7 +94,7 @@ func main() {
 
 	t11 := time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 	fmt.Printf("Time taken in seconds: %f\n", float64(t11-t00)/1000)
-    fmt.Printf("Total Messages: %d\n",atomic.LoadUint64(&totalMessages))
+	fmt.Printf("Total Messages: %d\n", atomic.LoadUint64(&totalMessages))
 
 	os.Exit(0)
 }

@@ -24,6 +24,7 @@ benchmark([N]) ->
 serverSpawner(Monitor, 0, D) -> [];
 
 serverSpawner(Monitor, N, D) when N>0 ->
+    io:format("N: ~w times~n", [N]),
     [spawn(?MODULE, server, [Monitor, clientSpawner(1), 0, D]) | serverSpawner(Monitor, N-1, D) ].    
 
 clientSpawner(0) -> [];

@@ -37,6 +37,7 @@ func main() {
 
 	var data = make([]byte, *d)
 
+	fmt.Printf("Repeat times: %d\n", *r)
 	fmt.Printf("Size of data: %d\n", len(data))
 
 	var m0 runtime.MemStats
