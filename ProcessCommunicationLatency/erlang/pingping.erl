@@ -1,14 +1,18 @@
 -module(pingping).
--export([benchmark/2]).
+-export([benchmark/1]).
 
-benchmark(R, D) ->
+benchmark(Args) ->
+    [R1,D1|_] = Args,
+    R = list_to_integer(R1),
+    D = list_to_integer(D1),
+    io:format("Repeat times: ~w, data length: ~w~n", [R, D]),
     P1 = spawn(fun() -> pingping(bytes_generate(D)) end),
     P2 = spawn(fun() -> pingping(bytes_generate(D)) end),
     Start = erlang:system_time(millisecond),
     P1 ! {init, self(), P2, R},
     P2 ! {init, self(), P1, R},
-    %imb:finalize(P1),
-    %imb:finalize(P2),
+    imb:finalize(P1),
+    imb:finalize(P2),
     End = erlang:system_time(millisecond),
     io:format("Total time taken: ~f seconds~n", [(End-Start)/1000]).
 
