@@ -38,13 +38,15 @@ object Main extends App {
 	        	P1!StartMessage(repetitions, P2)
 	        	P2!StartMessage(repetitions, P1)
 	        case StopMessage =>
-	        	count += 1
+	        	count += 1 //why?
 	            if (count == 2) {
 	                t1 = System.currentTimeMillis 
 
-					  println("Time taken in seconds: " + (t1-t0)/1000.000)
-					  println("Used memory in end: " + (runtime.totalMemory - runtime.freeMemory)/(1024*1024) + "MB")
+					println("Time taken in seconds: " + (t1-t0)/1000.000)
+					println("Used memory in end: " + (runtime.totalMemory - runtime.freeMemory)/(1024*1024) + "MB")
+					system.terminate()
 	            } 
+				
 	        case _ => println("Run got something unexpected.")
 	    }
 	}	
@@ -57,4 +59,5 @@ object Main extends App {
   val Runner = system.actorOf(Props(new Runner(repetitions)), name = "S")
 
   Runner!InitMessage
+
 }
