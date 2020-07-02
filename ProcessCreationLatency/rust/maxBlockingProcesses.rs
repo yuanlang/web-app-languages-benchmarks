@@ -1,7 +1,7 @@
 use std::env;
 use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -11,12 +11,12 @@ fn main() {
     let start = Instant::now();
     let mut txs = Vec::new();
     let mut handles = Vec::new();
-    for i in 0..num {
+    for _i in 0..num {
         let (tx, rx) = mpsc::channel::<String>();
         txs.push(tx);
         let handle = thread::spawn(move || {
-            let received = rx.recv().unwrap();
-            // println!("{} Got: {}", i, received);
+            let _received = rx.recv().expect("Unable to receive from channel");
+            // println!("{} Got: {}", _i, _received);
         });
         handles.push(handle);
     }
