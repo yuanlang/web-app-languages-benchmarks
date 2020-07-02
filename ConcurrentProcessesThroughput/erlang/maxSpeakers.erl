@@ -13,7 +13,7 @@ benchmark([N]) ->
 
     [Pid ! "Start" || Pid <- Servers],
     %wait for the processes to finish
-    timer:sleep(1000*6),
+    timer:sleep(1000*60),
     Monitor ! "Show",
     receive
         "Done" ->
@@ -61,7 +61,7 @@ aggregator(N, StartTime) ->
     process_flag(priority, max),
     receive
         "Show" ->
-            io:format("Time: ~f || Count: ~w.~n", [(erlang:system_time(millisecond) - StartTime)/1000,N]);
+            io:format("Time: ~f || Count: ~w~n", [(erlang:system_time(millisecond) - StartTime)/1000,N]);
         MessagesCount ->
             aggregator(N+MessagesCount, StartTime)
     end.
