@@ -24,4 +24,5 @@ object Main extends App {
 
   println("Time taken in seconds: " + (t1-t0)/1000.000)
   println("Used memory in end: " + (runtime.totalMemory - runtime.freeMemory)/(1024*1024) + "MB")
+  system.terminate()
 }
