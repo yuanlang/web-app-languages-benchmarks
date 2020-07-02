@@ -1,0 +1,9 @@
+[package]
+name = "max_blocking"
+version = "0.1.0"
+authors = ["Lang Yuan <2448338y@student.gla.ac.uk>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
