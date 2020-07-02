@@ -79,7 +79,7 @@ object Main extends App {
 
   manager ! StartMessage(workersList, data)
 
-  Thread.sleep(2000)
+  Thread.sleep(60 * 1000)
   manager ! "Show"
   scala.sys.exit(0)
 }
