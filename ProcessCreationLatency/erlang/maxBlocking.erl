@@ -1,9 +1,10 @@
 -module(maxBlocking).
 -compile(export_all).
 
-benchmark(N) ->
+benchmark([N]) ->
     Start = erlang:system_time(millisecond),
-    maxP(N),
+    NumOfProcess = element(1, string:to_integer(N)),
+    maxP(NumOfProcess),
     End = erlang:system_time(millisecond),
     io:format("Total time taken: ~f seconds~n", [(End-Start)/1000]).
 
