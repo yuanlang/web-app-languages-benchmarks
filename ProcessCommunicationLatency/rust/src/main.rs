@@ -1,7 +1,7 @@
 use std::env;
 use std::sync::mpsc;
 use std::thread;
-use std::sync::Arc;
+//use std::sync::Arc;
 use std::time::{Instant};
 use std::time::Duration;
 
@@ -19,13 +19,13 @@ fn main() {
     let d: u32 = arg2.parse().expect("Not a number!");
     println!("Repeat times: {}, data length: {}", r, d);
 
-    let send_bytes_1 : Arc<Vec<u8>> = Arc::new((0..d).map(|_| { rand::random::<u8>() }).collect());
+    let send_bytes_1 : Vec<u8> = (0..d).map(|_| { rand::random::<u8>() }).collect();
     //println!("{:?}", send_bytes_1);
-    let send_bytes_2 : Arc<Vec<u8>> = Arc::new((0..d).map(|_| { rand::random::<u8>() }).collect());
+    let send_bytes_2 : Vec<u8> = (0..d).map(|_| { rand::random::<u8>() }).collect();
     //println!("{:?}", send_bytes_2);
 
-    let (tx1, _rx1) = mpsc::channel::<Arc<Vec<u8>>>();
-    let (tx2, _rx2) = mpsc::channel::<Arc<Vec<u8>>>();
+    let (tx1, _rx1) = mpsc::channel::<Vec<u8>>();
+    let (tx2, _rx2) = mpsc::channel::<Vec<u8>>();
 
     let start = Instant::now();
     let p1 = thread::spawn(move || {
@@ -33,7 +33,7 @@ fn main() {
         let mut num = 0;
         while num < r {
             let sending = send_bytes_1.clone();
-            tx1.send(sending).unwrap();
+            tx1.send(sending.to_vec()).unwrap();
             num += 1;
         }
         
@@ -46,7 +46,7 @@ fn main() {
         let mut num = 0;
         while num < r {
             let sending = send_bytes_2.clone();
-            tx2.send(sending).unwrap();
+            tx2.send(sending.to_vec()).unwrap();
             num += 1;
         }
         // let received = _rx1.recv().unwrap();
