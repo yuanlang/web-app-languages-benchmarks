@@ -1,6 +1,6 @@
 #!/bin/sh
 filename="test.result.`date +"%Y%m%d-%H%M%S"`"
-for lang in go erlang scala
+for lang in go erlang scala rust
 do
 cd $lang
 echo "process language: $lang"
@@ -23,6 +23,8 @@ do
 	        erl -noshell -run pingping benchmark $r $d -s init stop >> $filename
             elif [ $lang = "scala" ]; then
 	        sbt "run $r $d" >> $filename
+            elif [ $lang = "rust" ]; then
+	        cargo run $r $d >> $filename
             fi
         done
     done	
