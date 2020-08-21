@@ -18,10 +18,10 @@ async fn main() {
             task_that_takes_a_second().await;
         });
         
-        match SystemTime::now().duration_since(UNIX_EPOCH) {
-            Ok(n) => println!("ts(sec): {:?} thd no: {}", n.as_secs(), i),
-            Err(_) => panic!("SystemTime before UNIX EPOCH!"),
-        }
+        let ts = SystemTime::now().duration_since(UNIX_EPOCH)
+                              .expect("Clock may have gone backwards");
+        println!("ts(sec): {:?} thd no: {}", ts.as_secs(), i);
+        
         i += 1;
     }
     // return;
