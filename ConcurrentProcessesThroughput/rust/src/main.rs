@@ -23,26 +23,23 @@ fn main() {
 
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
 
+    // Create thread pool according to the parameter
     let tx_counter = Arc::new(Mutex::new(0));
     let start = Instant::now();
     let mut thread_holder = vec![];
     for _i in 0 .. n {
         let tx1 = mpsc::Sender::clone(&tx);
         let counter1 = Arc::clone(&tx_counter);
-        let send_bytes_1 = send_bytes.clone();
+        let send_bytes_copy = send_bytes.clone();
         thread_holder.push(thread::spawn(move || {
             loop {
                 let mut num = counter1.lock().unwrap();
-                let sending = send_bytes_1.clone();
+                let sending = send_bytes_copy.clone();
                 tx1.send(sending.to_vec()).unwrap();
                 *num += 1;
             }
         }));
     }
-
-    // for thread_elememt in thread_holder {
-    //     thread_elememt.join().unwrap();
-    // }
 
     let counter = Arc::new(Mutex::new(0));
     let receiver = Arc::new(Mutex::new(rx));
@@ -59,18 +56,6 @@ fn main() {
             *num += 1;
         }));
     }
-
-    // let _aggregator = thread::spawn(move || {
-    //     let d = Duration::from_millis(10);        
-    //     loop {
-    //         let mut num = counter1.lock().unwrap();
-    //         //println!("aggregator recv");
-    //         let _r = rx.recv_timeout(d);
-    //         *num += 1;
-    //     }
-    // });
-
-    // aggregator.join().unwrap();
 
     thread::sleep(Duration::from_secs(60));
 
