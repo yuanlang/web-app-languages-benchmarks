@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() < 1 {
+    if args.len() < 2 {
         print!("invalid number of goroutines\n");
         print!("cargo run thread_num\n");
         std::process::exit(0);
