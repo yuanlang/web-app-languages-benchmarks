@@ -23,15 +23,19 @@ fn main() {
 
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
 
+    let tx_counter = Arc::new(Mutex::new(0));
     let start = Instant::now();
     let mut thread_holder = vec![];
     for _i in 0 .. n {
         let tx1 = mpsc::Sender::clone(&tx);
+        let counter1 = Arc::clone(&tx_counter);
         let send_bytes_1 = send_bytes.clone();
         thread_holder.push(thread::spawn(move || {
             loop {
+                let mut num = counter1.lock().unwrap();
                 let sending = send_bytes_1.clone();
                 tx1.send(sending.to_vec()).unwrap();
+                *num += 1;
             }
         }));
     }
@@ -41,16 +45,30 @@ fn main() {
     // }
 
     let counter = Arc::new(Mutex::new(0));
-    let counter1 = Arc::clone(&counter);
-    let _aggregator = thread::spawn(move || {
-        let d = Duration::from_millis(10);        
-        loop {
+    let receiver = Arc::new(Mutex::new(rx));
+    
+    let mut aggregator_holder = vec![];
+    for _i in 0 .. n {
+        let counter1 = Arc::clone(&counter);
+        let thread_receiver = Arc::clone(&receiver);
+        aggregator_holder.push(thread::spawn(move || loop {
+            let d = Duration::from_millis(10);
             let mut num = counter1.lock().unwrap();
             //println!("aggregator recv");
-            let _r = rx.recv_timeout(d);
+            let _r = thread_receiver.lock().unwrap().recv_timeout(d);
             *num += 1;
-        }
-    });
+        }));
+    }
+
+    // let _aggregator = thread::spawn(move || {
+    //     let d = Duration::from_millis(10);        
+    //     loop {
+    //         let mut num = counter1.lock().unwrap();
+    //         //println!("aggregator recv");
+    //         let _r = rx.recv_timeout(d);
+    //         *num += 1;
+    //     }
+    // });
 
     // aggregator.join().unwrap();
 
@@ -59,7 +77,8 @@ fn main() {
     let duration = start.elapsed();
 
     println!("Total time taken seconds: {:?} ", duration.as_secs_f64());
-    println!("Total Messages: {} ", *counter.lock().unwrap());
+    println!("Total send messages: {} ", *tx_counter.lock().unwrap());
+    println!("Total recv messages: {} ", *counter.lock().unwrap());
 
     std::process::exit(0);
 }

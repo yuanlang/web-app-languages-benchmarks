@@ -1,6 +1,7 @@
 #!/bin/sh
 filename="test.result.`date +"%Y%m%d-%H%M%S"`"
-for lang in go erlang scala
+#for lang in go erlang scala
+for lang in rust
 do
 cd $lang
 echo "process language: $lang"
@@ -25,6 +26,8 @@ do
                 killall beam.smp
             elif [ $lang = "scala" ]; then
                 taskset $c sbt "run $i" >> $filename
+            elif [ $lang = "rust" ]; then
+                taskset $c cargo run $i >> $filename
             fi
         done
     done	
