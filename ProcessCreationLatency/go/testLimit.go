@@ -2,6 +2,8 @@ package main
 
 import (
     "fmt"
+    "os"
+    "time"
 )
 
 var ch = make(chan byte)
@@ -12,9 +14,16 @@ func f() {
 
 func main() {
     i := 1
+    file, err := os.Create("test_go_limit.txt")
+    if err != nil {
+        return
+    }
+
     for ; ; i++ {
         go f()
-        fmt.Printf("Number of goroutines: %d\n", i)
+        now := time.Now()
+        sec := now.Unix()
+        fmt.Fprintf(file, "ts(sec): %d goroutine no: %d\n", sec, i)
     }
 
 }

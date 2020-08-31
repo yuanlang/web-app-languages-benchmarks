@@ -18,8 +18,9 @@ object Main extends App {
   var numberOfActors:Int = 1
   while(true){
     system.actorOf(Props[HelloActor])
+    val timestamp: Long = System.currentTimeMillis / 1000
     numberOfActors = numberOfActors + 1
-    pw.write("Number of process(es):: " + numberOfActors + "\n")
+    pw.write("ts(sec): " + timestamp + " actor no: " + numberOfActors + "\n")
   }
   pw.close
   system.terminate()

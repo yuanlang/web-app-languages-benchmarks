@@ -2,14 +2,16 @@
 -compile(export_all).
 
 benchmark() ->
-    loop(1).
+    {ok, F} = file:open("test_erl_hibernate_limit.txt", [write]),
+    loop(F, 1).
 
-loop(N) ->
-    io:format("Number of process(es): ~w ~n", [N]),
+loop(F, N) ->
+    {_, Second, _} = os:timestamp(),
+    io:format(F, "ts(sec): ~w proc no: ~w~n", [Second, N]),
     spawn(?MODULE, hibernate, []),
     % Info = erlang:process_info(Pid, current_function),
     % io:format("~w", [Info]).
-    loop(N+1).
+    loop(F, N+1).
 
 hibernate() ->
     erlang:hibernate(?MODULE, p, []).

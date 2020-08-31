@@ -2,6 +2,20 @@
 // use tokio::prelude::*;
 use tokio::time;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::fs::File;
+use std::io::prelude::*;
+
+fn is_print(n: i32) -> bool {
+    if n < 192000000 {
+         if n % 1000 == 1 {
+             true
+         } else {
+             false
+         }
+    } else {
+        true
+    }
+}
 
 async fn task_that_takes_a_second() {
     // println!("hello {}", num);
@@ -9,19 +23,19 @@ async fn task_that_takes_a_second() {
 }
 
 #[tokio::main]
-async fn main() {
-    // let mut listener = TcpListener::bind("127.0.0.1:8080").await?;
+async fn main() -> std::io::Result<()> {
+    let mut file = File::create("test_tokio_limit.txt").unwrap();
     let mut i = 1;
     loop {
-        // let (mut socket, _) = listener.accept().await?;
         tokio::spawn(async move {
             task_that_takes_a_second().await;
         });
         
-        let ts = SystemTime::now().duration_since(UNIX_EPOCH)
+        if is_print(i) {       
+            let ts = SystemTime::now().duration_since(UNIX_EPOCH)
                               .expect("Clock may have gone backwards");
-        println!("ts(sec): {:?} thd no: {}", ts.as_secs(), i);
-        
+            writeln!(file, "ts(sec): {:?} thd no: {}", ts.as_secs(), i)?;
+        }
         i += 1;
     }
     // return;

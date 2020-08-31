@@ -6,7 +6,8 @@ benchmark() ->
     loop(F, 1).
 
 loop(F, N) ->
-    io:format(F, "Number of process(es): ~w~n", [N]),
+    {_, Second, _} = os:timestamp(),
+    io:format(F, "ts(sec): ~w proc no: ~w~n", [Second, N]),
     spawn(?MODULE, p, []),
     loop(F, N+1).
 
