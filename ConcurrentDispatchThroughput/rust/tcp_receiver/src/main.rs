@@ -56,6 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         tokio::spawn(async move {
             let mut buf = [0; 1024];
+            // let mut vec : Vec<u8> = Vec::new();
 
             // In a loop, read data from the socket and write the data back.
             loop {
@@ -69,7 +70,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 // to reduce the pressure of receiver, only return a fix length of msg
-                let fix_len = 10;
+                let fix_len : usize = 10;
                 socket
                     .write_all(&buf[0..fix_len])
                     .await

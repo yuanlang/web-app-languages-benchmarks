@@ -23,6 +23,10 @@
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use std::net::{TcpStream};
+use std::io::{Read, Write};
+use rand::{thread_rng, Rng};
+use std::str::from_utf8;
 
 use std::env;
 use std::error::Error;
@@ -30,9 +34,6 @@ use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // Todo:
-    // Setup a couple of connection with the Receivers
-    // the address of the receivers will be read from a config file
 
     let mut settings = config::Config::default();
     settings
@@ -43,8 +44,49 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .merge(config::Environment::with_prefix("APP")).unwrap();
 
     // Print out our settings (as a HashMap)
-    println!("{:?}",
-             settings.try_into::<HashMap<String, String>>().unwrap());
+    let hash_setting = settings.try_into::<HashMap<String, String>>().unwrap();
+    println!("{:?}", hash_setting);
+
+    // Setup a couple of connection with the Receivers
+    // the address of the receivers will be read from a config file
+    let receiver_num : u32 = 10;
+    for curr in 1 .. receiver_num + 1 {
+        let server_name = format!("{}{}", "server" , curr);
+        let server_addr = hash_setting[&server_name].clone();
+        match TcpStream::connect(&server_addr) {
+            Ok(mut stream) => {
+                println!("{} Successfully connected to server {}", curr, &server_addr);
+
+                // gen the msg type
+                let mut rng = thread_rng();
+                let n: u8 = rng.gen_range(0, 10);
+
+                let msg_len = 500; //data length
+                let mut send_bytes : Vec<u8> = (0..msg_len).map(|_| { rand::random::<u8>() }).collect();
+                send_bytes[0] = n;
+                stream.write(&send_bytes).unwrap();
+                println!("{} Sent msg, awaiting reply...", curr);
+
+                let mut data = [0 as u8; 6]; // using 6 byte buffer
+                match stream.read_exact(&mut data) {
+                    Ok(_) => {
+                        if data[0] == n {
+                            println!("{} Reply is ok!", curr);
+                        } else {
+                            let text = from_utf8(&data).unwrap();
+                            println!("{:1} Unexpected reply: {:2}", curr, text);
+                        }
+                    },
+                    Err(e) => {
+                        println!("Failed to receive data: {}", e);
+                    }
+                }
+            },
+            Err(e) => {
+                println!("Failed to connect: {}", e);
+            }
+        }
+    }
 
     // Allow passing an address to listen on as the first argument of this
     // program, but otherwise we'll just set up our TCP listener on
