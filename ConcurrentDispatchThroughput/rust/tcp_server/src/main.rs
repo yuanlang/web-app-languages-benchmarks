@@ -26,12 +26,25 @@ use tokio::net::TcpListener;
 
 use std::env;
 use std::error::Error;
+use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Todo:
     // Setup a couple of connection with the Receivers
     // the address of the receivers will be read from a config file
+
+    let mut settings = config::Config::default();
+    settings
+        // Add in `./Settings.toml`
+        .merge(config::File::with_name("Settings")).unwrap()
+        // Add in settings from the environment (with a prefix of APP)
+        // Eg.. `APP_DEBUG=1 ./target/app` would set the `debug` key
+        .merge(config::Environment::with_prefix("APP")).unwrap();
+
+    // Print out our settings (as a HashMap)
+    println!("{:?}",
+             settings.try_into::<HashMap<String, String>>().unwrap());
 
     // Allow passing an address to listen on as the first argument of this
     // program, but otherwise we'll just set up our TCP listener on
