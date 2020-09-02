@@ -1,6 +1,6 @@
 #!/bin/sh
 filename="test.result.`date +"%Y%m%d-%H%M%S"`"
-for lang in go erlang scala
+for lang in go erlang scala rust_with_tokio
 do
 cd $lang
 echo "process language: $lang"
@@ -13,15 +13,17 @@ do
     #for n in 1000 10000 100000 
     do
         echo "Test for process number $n"
-	echo "Test for process number $n" >> $filename
-	if [ $lang = "go" ]; then
+        echo "Test for process number $n" >> $filename
+        if [ $lang = "go" ]; then
             ./maxBlockingProcesses -n $n  >> $filename
-	elif [ $lang = "erlang" ]; then
+        elif [ $lang = "erlang" ]; then
             erl +P 134217727 -noshell -run maxBlocking benchmark $n -s init stop  >> $filename
         elif [ $lang = "scala" ]; then
             sbt "run $n"  >> $filename
+        elif [ $lang = "rust_with_tokio" ]; then
+            cargo run $n >> $filename
         fi
-    done	
+    done
 done
 cd ..
 done
