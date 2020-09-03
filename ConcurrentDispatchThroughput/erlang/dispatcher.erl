@@ -19,7 +19,7 @@
 %% Author  : Lang Yuan
 %% Created : 1 Sep 2020 by Lang Yuan
 
--module(dispath).
+-module(dispatcher).
 
 -export([bench_args/2, run/3]).
 
