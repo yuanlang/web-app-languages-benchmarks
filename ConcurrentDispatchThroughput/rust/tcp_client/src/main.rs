@@ -26,7 +26,7 @@ fn main() {
 
                 // gen the msg type
                 let mut rng = thread_rng();
-                let n: u8 = rng.gen_range(1, 10);
+                let n: u8 = rng.gen_range(1, 11);
 
                 send_bytes[0] = n;
                 stream.write(&send_bytes).unwrap();
