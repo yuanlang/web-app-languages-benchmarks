@@ -1,10 +1,8 @@
 #!/bin/bash
-source start_receivers.conf
-receiver_num=10
-for i in {1..10}
+while read key value
 do
-    server_id="server"$i
-    server_addr=$(eval "echo \$$server_id")
-    echo "start receiver $server_addr"
+    server_id=$key
+    server_addr=$value
+    echo "start $server_id $server_addr"
     cargo run $server_addr &
-done
+done < start_receivers.conf
