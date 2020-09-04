@@ -24,9 +24,7 @@
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
-use std::net::{TcpStream};
-use std::io::{Read, Write};
-// use rand::{thread_rng, Rng};
+use tokio::net::{TcpStream};
 use std::str::from_utf8;
 use std::collections::VecDeque;
 
@@ -64,46 +62,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Setup a couple of connection with the Receivers
     // the address of the receivers will be read from a config file
     let mut curr : usize = 1;
-    while let Some(mut rx1) = channels_rx_vec.pop_front() {
+    while let Some(rx1) = channels_rx_vec.pop_front() {
         let server_name = format!("{}{}", "server" , curr);
         let server_addr = hash_setting[&server_name].clone();
-        match TcpStream::connect(&server_addr) {
-            Ok(mut stream) => {
+        match TcpStream::connect(&server_addr).await {
+            Ok(stream) => {
                 println!("{} Successfully connected to server {}", curr, &server_addr);
-                stream.set_read_timeout(None).expect("set_read_timeout call failed");
 
                 // get the channel receiver first
                 tokio::spawn(async move {
-                    loop {
-                        // Read message from the channel and wait replay
-                        match rx1.recv().await {
-                            Some(msg) => {
-                                let n = msg[0];
-                                println!("got msg type: {}", n);
-
-                                stream.write(&msg).unwrap();
-                                println!("{} Sent msg to Receiver, awaiting reply...", curr);
-
-                                let mut data = [0 as u8; 10]; // using 6 byte buffer
-                                match stream.read_exact(&mut data) {
-                                    Ok(_) => {
-                                        if data[0] == n {
-                                            println!("{} Reply is ok!", curr);
-                                        } else {
-                                            let text = from_utf8(&data).unwrap();
-                                            println!("{:1} Unexpected reply: {:2}", curr, text);
-                                        }
-                                    },
-                                    Err(e) => {
-                                        println!("Failed to receive data: {}", e);
-                                    }
-                                }
-                            },
-                            None => {
-                                // do nothing
-                            }
-                        }
-                    }
+                    do_dispatch(curr, rx1, stream).await;
                 });
             },
             Err(e) => {
@@ -128,7 +96,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     loop {
         // Asynchronously wait for an inbound socket.
-        let (mut socket, _) = listener.accept().await?;
+        let (socket, _) = listener.accept().await?;
 
         // And this is where much of the magic of this server happens. We
         // crucially want all clients to make progress concurrently, rather than
@@ -137,39 +105,86 @@ async fn main() -> Result<(), Box<dyn Error>> {
         //
         // Essentially here we're executing a new task to run concurrently,
         // which will allow all of our clients to be processed concurrently.
-        let mut channels_tx_map_copy = channels_tx_map.clone();
+        let channels_tx_map_copy = channels_tx_map.clone();
 
         tokio::spawn(async move {
-            let mut buf = [0; 1024];
-
-            // In a loop, read data from the socket and write the data back.
-            loop {
-                let n = socket
-                    .read(&mut buf)
-                    .await
-                    .expect("failed to read data from socket to the Generator");
-
-                if n == 0 {
-                    return;
-                }
-
-                //Todo:
-                // Dispatch the message to receivers by the message type
-                let dispath_num = buf[0] as u32;
-                println!("get dispath num {}", dispath_num);
-                let tx_copy = channels_tx_map_copy.get_mut(&dispath_num).unwrap();
-                if let Err(_) = tx_copy.send(buf).await {
-                    println!("receiver thread dropped");
-                    return;
-                }
-
-                // Send msg back to Generator
-                let fix_len : usize = 10;
-                socket
-                    .write_all(&buf[0..fix_len])
-                    .await
-                    .expect("failed to write data to socket to the Generator");
-            }
+            push_msg_to_channel(socket, channels_tx_map_copy).await;
         });
     }
+}
+
+/// Dispatch message to Receivers
+///
+/// Receive messages from channel and dispatch them to the Receiver through the TCP connnections
+async fn do_dispatch(id: usize, mut rx: mpsc::Receiver<[u8; 1024]>, mut stream: TcpStream) {
+    loop {
+        // Read message from the channel and wait replay
+        match rx.recv().await {
+            Some(msg) => {
+                let n = msg[0];
+                println!("got msg type: {}", n);
+
+                match stream.write(&msg).await {
+                    Ok(_) => {
+                        println!("{} Sent msg to Receiver, awaiting reply...", id);
+                    },
+                    Err(e) => {
+                        println!("Failed to write data through socket: {}", e);
+                    }
+                }
+
+
+                let mut data = [0 as u8; 10]; // using 6 byte buffer
+                match stream.read_exact(&mut data).await {
+                    Ok(_) => {
+                        if data[0] == n {
+                            println!("{} Reply is ok!", id);
+                        } else {
+                            let text = from_utf8(&data).unwrap();
+                            println!("{:1} Unexpected reply: {:2}", id, text);
+                        }
+                    },
+                    Err(e) => {
+                        println!("Failed to receive data: {}", e);
+                    }
+                }
+            },
+            None => {
+                // do nothing
+            }
+        }
+    }    
+}
+
+async fn push_msg_to_channel(mut socket: tokio::net::TcpStream, 
+    mut channels_tx_map_copy: std::collections::HashMap<u32, mpsc::Sender<[u8; 1024]>>) {
+    let mut buf = [0; 1024];
+
+    // In a loop, read data from the socket and write the data back.
+    loop {
+        let n = socket
+            .read(&mut buf)
+            .await
+            .expect("failed to read data from socket to the Generator");
+
+        if n == 0 {
+            return;
+        }
+
+        // Dispatch the message to receiver thread by the first byte
+        let dispath_num = buf[0] as u32;
+        println!("get dispath num {}", dispath_num);
+        let tx_copy = channels_tx_map_copy.get_mut(&dispath_num).unwrap();
+        if let Err(_) = tx_copy.send(buf).await {
+            println!("receiver thread dropped");
+            return;
+        }
+
+        // Send msg back to Generator
+        let fix_len : usize = 10;
+        socket
+            .write_all(&buf[0..fix_len])
+            .await
+            .expect("failed to write data to socket to the Generator");
+    }    
 }
