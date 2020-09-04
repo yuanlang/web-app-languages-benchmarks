@@ -53,15 +53,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // key is the server id, from 1 to receiver_num
     let receiver_num : u32 = 10;
     let mut channels_tx_map : HashMap<u32, mpsc::Sender<[u8; 1024]>>  = HashMap::new();
-    // let mut channels_rx_map : HashMap<u32, mpsc::Receiver<Vec<u8>>>  = HashMap::new();
-    // let mut channels_tx_vec: VecDeque<mpsc::Sender<Vec<u8>>> = VecDeque::new();
     let mut channels_rx_vec: VecDeque<mpsc::Receiver<[u8; 1024]>> = VecDeque::new();
 
     for curr in 1 .. receiver_num + 1 {
-        let (sender, receiver) = mpsc::channel::<[u8; 1024]>(1000);
+        let (sender, receiver) = mpsc::channel::<[u8; 1024]>(1000 * 1024);
         channels_tx_map.insert(curr, sender);
-        // channels_rx_map.insert(curr, receiver);
-        // channels_tx_vec.push_back(sender);
         channels_rx_vec.push_back(receiver);
     }
 
@@ -74,34 +70,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
         match TcpStream::connect(&server_addr) {
             Ok(mut stream) => {
                 println!("{} Successfully connected to server {}", curr, &server_addr);
+                stream.set_read_timeout(None).expect("set_read_timeout call failed");
+
                 // get the channel receiver first
                 tokio::spawn(async move {
-                    // Read message from the channel and wait replay
-                    match rx1.recv().await {
-                        Some(msg) => {
-                            let n = msg[0];
-                            println!("got msg type: {}", n);
+                    loop {
+                        // Read message from the channel and wait replay
+                        match rx1.recv().await {
+                            Some(msg) => {
+                                let n = msg[0];
+                                println!("got msg type: {}", n);
 
-                            stream.write(&msg).unwrap();
-                            println!("{} Sent msg to Receiver, awaiting reply...", curr);
+                                stream.write(&msg).unwrap();
+                                println!("{} Sent msg to Receiver, awaiting reply...", curr);
 
-                            let mut data = [0 as u8; 10]; // using 6 byte buffer
-                            match stream.read_exact(&mut data) {
-                                Ok(_) => {
-                                    if data[0] == n {
-                                        println!("{} Reply is ok!", curr);
-                                    } else {
-                                        let text = from_utf8(&data).unwrap();
-                                        println!("{:1} Unexpected reply: {:2}", curr, text);
+                                let mut data = [0 as u8; 10]; // using 6 byte buffer
+                                match stream.read_exact(&mut data) {
+                                    Ok(_) => {
+                                        if data[0] == n {
+                                            println!("{} Reply is ok!", curr);
+                                        } else {
+                                            let text = from_utf8(&data).unwrap();
+                                            println!("{:1} Unexpected reply: {:2}", curr, text);
+                                        }
+                                    },
+                                    Err(e) => {
+                                        println!("Failed to receive data: {}", e);
                                     }
-                                },
-                                Err(e) => {
-                                    println!("Failed to receive data: {}", e);
                                 }
+                            },
+                            None => {
+                                // do nothing
                             }
-                        },
-                        None => {
-                            // do nothing
                         }
                     }
                 });
@@ -147,7 +147,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let n = socket
                     .read(&mut buf)
                     .await
-                    .expect("failed to read data from socket");
+                    .expect("failed to read data from socket to the Generator");
 
                 if n == 0 {
                     return;
@@ -159,20 +159,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 println!("get dispath num {}", dispath_num);
                 let tx_copy = channels_tx_map_copy.get_mut(&dispath_num).unwrap();
                 if let Err(_) = tx_copy.send(buf).await {
-                    println!("receiver dropped");
+                    println!("receiver thread dropped");
                     return;
                 }
-
-                //array to vector
-                // println!("recv buf: {}", String::from_utf8(buf[0 .. n].to_vec()).unwrap());
-                println!("recv from generator, msg type: {}", buf[0]);
 
                 // Send msg back to Generator
                 let fix_len : usize = 10;
                 socket
                     .write_all(&buf[0..fix_len])
                     .await
-                    .expect("failed to write data to socket");
+                    .expect("failed to write data to socket to the Generator");
             }
         });
     }

@@ -1,5 +1,5 @@
 use std::env;
-use std::net::{TcpStream};
+use std::net::{Shutdown, TcpStream};
 use std::io::{Read, Write};
 use std::str::from_utf8;
 use rand::{thread_rng, Rng};
@@ -19,8 +19,7 @@ fn main() {
     let msg_len = 500; //data length
     let mut send_bytes : Vec<u8> = (0..msg_len).map(|_| { rand::random::<u8>() }).collect();
 
-    for i in 0 .. connect_num {
-        let curr = i;
+    for curr in 0 .. connect_num {
         match TcpStream::connect("localhost:8080") {
             Ok(mut stream) => {
                 println!("{} Successfully connected to server in port 8080", curr);
@@ -45,8 +44,10 @@ fn main() {
                     },
                     Err(e) => {
                         println!("Failed to receive data: {}", e);
+                        return;
                     }
                 }
+                stream.shutdown(Shutdown::Both).expect("shutdown call failed");
             },
             Err(e) => {
                 println!("Failed to connect: {}", e);
