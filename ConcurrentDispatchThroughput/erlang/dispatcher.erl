@@ -16,6 +16,16 @@
 %%
 %% %CopyrightEnd%
 
+%% Benchmark Description:
+%% A benchmark about message proxying through a dispatcher. The benchmark
+%% spawns a certain number of receivers, one dispatcher, and a certain 
+%% number of generators. The dispatcher forwards the messages that it 
+%% receives from generators to the appropriate receiver. Each generator 
+%% sends a number of messages to a specific receiver. The parameters of 
+%% the benchmark are the number of receivers, the number of messages and 
+%% the message length.
+%%
+
 %% Author  : Lang Yuan
 %% Created : 1 Sep 2020 by Lang Yuan
 
