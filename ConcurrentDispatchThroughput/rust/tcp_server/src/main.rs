@@ -26,8 +26,9 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use std::net::{TcpStream};
 use std::io::{Read, Write};
-use rand::{thread_rng, Rng};
+// use rand::{thread_rng, Rng};
 use std::str::from_utf8;
+use std::collections::VecDeque;
 
 use std::env;
 use std::error::Error;
@@ -51,52 +52,65 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Create a couple of Channels for connections, one channel for one connnection
     // key is the server id, from 1 to receiver_num
     let receiver_num : u32 = 10;
-    let mut channels_tx_map : HashMap<u32, mpsc::Sender<Vec<u8>>>  = HashMap::new();
-    let mut channels_rx_map : HashMap<u32, mpsc::Receiver<Vec<u8>>>  = HashMap::new();
+    let mut channels_tx_map : HashMap<u32, mpsc::Sender<[u8; 1024]>>  = HashMap::new();
+    // let mut channels_rx_map : HashMap<u32, mpsc::Receiver<Vec<u8>>>  = HashMap::new();
+    // let mut channels_tx_vec: VecDeque<mpsc::Sender<Vec<u8>>> = VecDeque::new();
+    let mut channels_rx_vec: VecDeque<mpsc::Receiver<[u8; 1024]>> = VecDeque::new();
+
     for curr in 1 .. receiver_num + 1 {
-        let (sender, receiver) = mpsc::channel::<Vec<u8>>(1000);
+        let (sender, receiver) = mpsc::channel::<[u8; 1024]>(1000);
         channels_tx_map.insert(curr, sender);
-        channels_rx_map.insert(curr, receiver);
+        // channels_rx_map.insert(curr, receiver);
+        // channels_tx_vec.push_back(sender);
+        channels_rx_vec.push_back(receiver);
     }
 
     // Setup a couple of connection with the Receivers
     // the address of the receivers will be read from a config file
-    for curr in 1 .. receiver_num + 1 {
+    let mut curr : usize = 1;
+    while let Some(mut rx1) = channels_rx_vec.pop_front() {
         let server_name = format!("{}{}", "server" , curr);
         let server_addr = hash_setting[&server_name].clone();
         match TcpStream::connect(&server_addr) {
             Ok(mut stream) => {
                 println!("{} Successfully connected to server {}", curr, &server_addr);
+                // get the channel receiver first
+                tokio::spawn(async move {
+                    // Read message from the channel and wait replay
+                    match rx1.recv().await {
+                        Some(msg) => {
+                            let n = msg[0];
+                            println!("got msg type: {}", n);
 
-                // gen the msg type
-                let mut rng = thread_rng();
-                let n: u8 = rng.gen_range(0, 10);
+                            stream.write(&msg).unwrap();
+                            println!("{} Sent msg to Receiver, awaiting reply...", curr);
 
-                let msg_len = 500; //data length
-                let mut send_bytes : Vec<u8> = (0..msg_len).map(|_| { rand::random::<u8>() }).collect();
-                send_bytes[0] = n;
-                stream.write(&send_bytes).unwrap();
-                println!("{} Sent msg, awaiting reply...", curr);
-
-                let mut data = [0 as u8; 6]; // using 6 byte buffer
-                match stream.read_exact(&mut data) {
-                    Ok(_) => {
-                        if data[0] == n {
-                            println!("{} Reply is ok!", curr);
-                        } else {
-                            let text = from_utf8(&data).unwrap();
-                            println!("{:1} Unexpected reply: {:2}", curr, text);
+                            let mut data = [0 as u8; 10]; // using 6 byte buffer
+                            match stream.read_exact(&mut data) {
+                                Ok(_) => {
+                                    if data[0] == n {
+                                        println!("{} Reply is ok!", curr);
+                                    } else {
+                                        let text = from_utf8(&data).unwrap();
+                                        println!("{:1} Unexpected reply: {:2}", curr, text);
+                                    }
+                                },
+                                Err(e) => {
+                                    println!("Failed to receive data: {}", e);
+                                }
+                            }
+                        },
+                        None => {
+                            // do nothing
                         }
-                    },
-                    Err(e) => {
-                        println!("Failed to receive data: {}", e);
                     }
-                }
+                });
             },
             Err(e) => {
                 println!("Failed to connect: {}", e);
             }
         }
+        curr = curr + 1;
     }
 
     // Allow passing an address to listen on as the first argument of this
@@ -123,6 +137,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         //
         // Essentially here we're executing a new task to run concurrently,
         // which will allow all of our clients to be processed concurrently.
+        let mut channels_tx_map_copy = channels_tx_map.clone();
 
         tokio::spawn(async move {
             let mut buf = [0; 1024];
@@ -140,14 +155,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                 //Todo:
                 // Dispatch the message to receivers by the message type
+                let dispath_num = buf[0] as u32;
+                println!("get dispath num {}", dispath_num);
+                let tx_copy = channels_tx_map_copy.get_mut(&dispath_num).unwrap();
+                if let Err(_) = tx_copy.send(buf).await {
+                    println!("receiver dropped");
+                    return;
+                }
 
                 //array to vector
                 // println!("recv buf: {}", String::from_utf8(buf[0 .. n].to_vec()).unwrap());
-                println!("recv msg type: {}", buf[0]);
+                println!("recv from generator, msg type: {}", buf[0]);
 
-                let replay_len = 6;
+                // Send msg back to Generator
+                let fix_len : usize = 10;
                 socket
-                    .write_all(&buf[0..replay_len])
+                    .write_all(&buf[0..fix_len])
                     .await
                     .expect("failed to write data to socket");
             }

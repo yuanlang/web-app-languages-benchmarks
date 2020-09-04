@@ -27,13 +27,13 @@ fn main() {
 
                 // gen the msg type
                 let mut rng = thread_rng();
-                let n: u8 = rng.gen_range(0, 10);
+                let n: u8 = rng.gen_range(1, 10);
 
                 send_bytes[0] = n;
                 stream.write(&send_bytes).unwrap();
                 println!("{} Sent msg, awaiting reply...", curr);
 
-                let mut data = [0 as u8; 6]; // using 6 byte buffer
+                let mut data = [0 as u8; 6]; // using 10 byte buffer
                 match stream.read_exact(&mut data) {
                     Ok(_) => {
                         if data[0] == n {
