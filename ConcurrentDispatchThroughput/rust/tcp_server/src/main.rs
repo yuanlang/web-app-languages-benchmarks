@@ -23,6 +23,7 @@
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::mpsc;
 use std::net::{TcpStream};
 use std::io::{Read, Write};
 use rand::{thread_rng, Rng};
@@ -47,9 +48,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let hash_setting = settings.try_into::<HashMap<String, String>>().unwrap();
     println!("{:?}", hash_setting);
 
+    // Create a couple of Channels for connections, one channel for one connnection
+    // key is the server id, from 1 to receiver_num
+    let receiver_num : u32 = 10;
+    let mut channels_tx_map : HashMap<u32, mpsc::Sender<Vec<u8>>>  = HashMap::new();
+    let mut channels_rx_map : HashMap<u32, mpsc::Receiver<Vec<u8>>>  = HashMap::new();
+    for curr in 1 .. receiver_num + 1 {
+        let (sender, receiver) = mpsc::channel::<Vec<u8>>(1000);
+        channels_tx_map.insert(curr, sender);
+        channels_rx_map.insert(curr, receiver);
+    }
+
     // Setup a couple of connection with the Receivers
     // the address of the receivers will be read from a config file
-    let receiver_num : u32 = 10;
     for curr in 1 .. receiver_num + 1 {
         let server_name = format!("{}{}", "server" , curr);
         let server_addr = hash_setting[&server_name].clone();
