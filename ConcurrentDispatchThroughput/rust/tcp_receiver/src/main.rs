@@ -21,7 +21,7 @@
 
 #![warn(rust_2018_idioms)]
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt};
 use tokio::net::TcpListener;
 
 use std::env;
@@ -31,10 +31,10 @@ use std::error::Error;
 async fn main() -> Result<(), Box<dyn Error>> {
     // Allow passing an address to listen on as the first argument of this
     // program, but otherwise we'll just set up our TCP listener on
-    // 127.0.0.1:8080 for connections.
+    // 127.0.0.1:14001 for connections.
     let addr = env::args()
         .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+        .unwrap_or_else(|| "127.0.0.1:14001".to_string());
 
     // Next up we create a TCP listener which will listen for incoming
     // connections. This TCP listener is bound to the address we determined
@@ -66,15 +66,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .expect("failed to read data from socket");
 
                 if n == 0 {
+                    println!("msg length error!");
                     return;
                 }
 
-                // to reduce the pressure of receiver, only return a fix length of msg
-                let fix_len : usize = 10;
-                socket
-                    .write_all(&buf[0..fix_len])
-                    .await
-                    .expect("failed to write data to socket");
             }
         });
     }

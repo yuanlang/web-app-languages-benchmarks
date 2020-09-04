@@ -25,7 +25,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio::net::{TcpStream};
-use std::str::from_utf8;
+// use std::str::from_utf8;
 use std::collections::VecDeque;
 
 use std::env;
@@ -83,10 +83,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Allow passing an address to listen on as the first argument of this
     // program, but otherwise we'll just set up our TCP listener on
-    // 127.0.0.1:8080 for connections.
+    // 127.0.0.1:8888 for connections.
     let addr = env::args()
         .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+        .unwrap_or_else(|| "127.0.0.1:8888".to_string());
 
     // Next up we create a TCP listener which will listen for incoming
     // connections. This TCP listener is bound to the address we determined
@@ -126,26 +126,10 @@ async fn do_dispatch(id: usize, mut rx: mpsc::Receiver<[u8; 1024]>, mut stream: 
 
                 match stream.write(&msg).await {
                     Ok(_) => {
-                        println!("{} Sent msg to Receiver, awaiting reply...", id);
+                        println!("Sent msg to No.{} Receiver.", id);
                     },
                     Err(e) => {
                         println!("Failed to write data through socket: {}", e);
-                    }
-                }
-
-
-                let mut data = [0 as u8; 10]; // using 6 byte buffer
-                match stream.read_exact(&mut data).await {
-                    Ok(_) => {
-                        if data[0] == n {
-                            println!("{} Reply is ok!", id);
-                        } else {
-                            let text = from_utf8(&data).unwrap();
-                            println!("{:1} Unexpected reply: {:2}", id, text);
-                        }
-                    },
-                    Err(e) => {
-                        println!("Failed to receive data: {}", e);
                     }
                 }
             },
@@ -156,6 +140,10 @@ async fn do_dispatch(id: usize, mut rx: mpsc::Receiver<[u8; 1024]>, mut stream: 
     }    
 }
 
+/// Send receive msg to message channel
+/// 
+/// Receive message from the Generator and send the message to the corresponed receiver
+/// by using the first byte of the message
 async fn push_msg_to_channel(mut socket: tokio::net::TcpStream, 
     mut channels_tx_map_copy: std::collections::HashMap<u32, mpsc::Sender<[u8; 1024]>>) {
     let mut buf = [0; 1024];
@@ -173,18 +161,11 @@ async fn push_msg_to_channel(mut socket: tokio::net::TcpStream,
 
         // Dispatch the message to receiver thread by the first byte
         let dispath_num = buf[0] as u32;
-        println!("get dispath num {}", dispath_num);
+        println!("Get dispath num {}", dispath_num);
         let tx_copy = channels_tx_map_copy.get_mut(&dispath_num).unwrap();
         if let Err(_) = tx_copy.send(buf).await {
             println!("receiver thread dropped");
             return;
         }
-
-        // Send msg back to Generator
-        let fix_len : usize = 10;
-        socket
-            .write_all(&buf[0..fix_len])
-            .await
-            .expect("failed to write data to socket to the Generator");
     }    
 }
