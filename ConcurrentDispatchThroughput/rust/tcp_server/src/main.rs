@@ -32,8 +32,25 @@ use std::env;
 use std::error::Error;
 use std::collections::HashMap;
 
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Instant};
+use std::time::Duration;
+
+const MSG_LEN: usize = 500; //data length
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        println!("invalid number of connections");
+        println!("cargo run connect_num");
+        std::process::exit(0);
+    }
+
+    let arg1 = &args[1];
+    let connect_num: u32 = arg1.parse().expect("Not a number!");
+    println!("Connection number: {}", connect_num);
 
     let mut settings = config::Config::default();
     settings
@@ -50,11 +67,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Create a couple of Channels for connections, one channel for one connnection
     // key is the server id, from 1 to receiver_num
     let receiver_num : u32 = 10;
-    let mut channels_tx_map : HashMap<u32, mpsc::Sender<[u8; 1024]>>  = HashMap::new();
-    let mut channels_rx_vec: VecDeque<mpsc::Receiver<[u8; 1024]>> = VecDeque::new();
+    let mut channels_tx_map : HashMap<u32, mpsc::Sender<[u8; MSG_LEN]>>  = HashMap::new();
+    let mut channels_rx_vec: VecDeque<mpsc::Receiver<[u8; MSG_LEN]>> = VecDeque::new();
 
     for curr in 1 .. receiver_num + 1 {
-        let (sender, receiver) = mpsc::channel::<[u8; 1024]>(1000 * 1024);
+        let (sender, receiver) = mpsc::channel::<[u8; MSG_LEN]>(1000 * MSG_LEN);
         channels_tx_map.insert(curr, sender);
         channels_rx_vec.push_back(receiver);
     }
@@ -62,16 +79,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Setup a couple of connection with the Receivers
     // the address of the receivers will be read from a config file
     let mut curr : usize = 1;
+    let disp_counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
     while let Some(rx1) = channels_rx_vec.pop_front() {
         let server_name = format!("{}{}", "server" , curr);
         let server_addr = hash_setting[&server_name].clone();
+        let disp_mutex = Arc::clone(&disp_counter);
         match TcpStream::connect(&server_addr).await {
             Ok(stream) => {
                 println!("{} Successfully connected to server {}", curr, &server_addr);
 
                 // get the channel receiver first
                 tokio::spawn(async move {
-                    do_dispatch(curr, rx1, stream).await;
+                    do_dispatch(curr, rx1, stream, disp_mutex).await;
                 });
             },
             Err(e) => {
@@ -84,39 +103,59 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Allow passing an address to listen on as the first argument of this
     // program, but otherwise we'll just set up our TCP listener on
     // 127.0.0.1:8888 for connections.
+    const DEFAULT_ADDR: &str = "127.0.0.1:8888";
     let addr = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:8888".to_string());
+        .nth(2)
+        .unwrap_or_else(|| DEFAULT_ADDR.to_string());
 
-    // Next up we create a TCP listener which will listen for incoming
+    // Create a TCP listener which will listen for incoming
     // connections. This TCP listener is bound to the address we determined
     // above and must be associated with an event loop.
     let mut listener = TcpListener::bind(&addr).await?;
     println!("Listening on: {}", addr);
 
-    loop {
+    // To limit the number of connections
+    let mut remain_connection = connect_num;
+    while remain_connection > 0 {
         // Asynchronously wait for an inbound socket.
         let (socket, _) = listener.accept().await?;
 
-        // And this is where much of the magic of this server happens. We
-        // crucially want all clients to make progress concurrently, rather than
-        // blocking one on completion of another. To achieve this we use the
-        // `tokio::spawn` function to execute the work in the background.
-        //
-        // Essentially here we're executing a new task to run concurrently,
-        // which will allow all of our clients to be processed concurrently.
+        // get a copy of senders hashmap, to allow the ownership move to 
+        // the tokio thread and doesn't influence others
         let channels_tx_map_copy = channels_tx_map.clone();
 
+        // all clients to make progress concurrently, rather than
+        // blocking one on completion of another. To achieve this we use the
+        // `tokio::spawn` function to execute the work in the background.
         tokio::spawn(async move {
             push_msg_to_channel(socket, channels_tx_map_copy).await;
         });
+        remain_connection -= 1;
     }
+
+    let start = Instant::now();
+
+    thread::sleep(Duration::from_secs(6));
+
+    // get lock, copy the counters
+    let result = *disp_counter.lock().unwrap();
+
+    let duration = start.elapsed();
+
+    println!("Total time taken seconds: {:?} ", duration.as_secs_f64());
+    println!("Total dispatch messages: {} ", result);
+
+    Ok(())
 }
 
 /// Dispatch message to Receivers
 ///
-/// Receive messages from channel and dispatch them to the Receiver through the TCP connnections
-async fn do_dispatch(id: usize, mut rx: mpsc::Receiver<[u8; 1024]>, mut stream: TcpStream) {
+/// Receive messages from channel and dispatch them to the Receiver through 
+/// the TCP connnections
+async fn do_dispatch(id: usize, 
+        mut rx: mpsc::Receiver<[u8; MSG_LEN]>, 
+        mut stream: TcpStream,
+        counter: Arc<Mutex<usize>>) {
     loop {
         // Read message from the channel and wait replay
         match rx.recv().await {
@@ -132,6 +171,11 @@ async fn do_dispatch(id: usize, mut rx: mpsc::Receiver<[u8; 1024]>, mut stream: 
                         println!("Failed to write data through socket: {}", e);
                     }
                 }
+                
+                //increase the counter
+                let mut num = counter.lock().unwrap();
+                *num += 1;
+
             },
             None => {
                 // do nothing
@@ -145,18 +189,18 @@ async fn do_dispatch(id: usize, mut rx: mpsc::Receiver<[u8; 1024]>, mut stream: 
 /// Receive message from the Generator and send the message to the corresponed receiver
 /// by using the first byte of the message
 async fn push_msg_to_channel(mut socket: tokio::net::TcpStream, 
-    mut channels_tx_map_copy: std::collections::HashMap<u32, mpsc::Sender<[u8; 1024]>>) {
-    let mut buf = [0; 1024];
+    mut channels_tx_map_copy: std::collections::HashMap<u32, mpsc::Sender<[u8; MSG_LEN]>>) {
 
     // In a loop, read data from the socket and write the data back.
     loop {
+        let mut buf = [0; MSG_LEN];
         let n = socket
             .read(&mut buf)
             .await
             .expect("failed to read data from socket connected to the Generator");
 
         if n == 0 {
-            println!("receive wrong length message");
+            println!("receive zero length message");
             return;
         }
 
