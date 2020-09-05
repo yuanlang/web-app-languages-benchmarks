@@ -140,7 +140,7 @@ async fn do_dispatch(id: usize, mut rx: mpsc::Receiver<[u8; 1024]>, mut stream: 
     }    
 }
 
-/// Send receive msg to message channel
+/// Send received msg to message channel
 /// 
 /// Receive message from the Generator and send the message to the corresponed receiver
 /// by using the first byte of the message
@@ -153,19 +153,26 @@ async fn push_msg_to_channel(mut socket: tokio::net::TcpStream,
         let n = socket
             .read(&mut buf)
             .await
-            .expect("failed to read data from socket to the Generator");
+            .expect("failed to read data from socket connected to the Generator");
 
         if n == 0 {
+            println!("receive wrong length message");
             return;
         }
 
         // Dispatch the message to receiver thread by the first byte
         let dispath_num = buf[0] as u32;
         println!("Get dispath num {}", dispath_num);
-        let tx_copy = channels_tx_map_copy.get_mut(&dispath_num).unwrap();
-        if let Err(_) = tx_copy.send(buf).await {
-            println!("receiver thread dropped");
-            return;
+        match channels_tx_map_copy.get_mut(&dispath_num) {
+            Some(tx_copy) => {
+                if let Err(_) = tx_copy.send(buf).await {
+                    println!("receiver thread dropped");
+                    return;
+                }
+            },
+            None => {
+                println!("Get the wrong dispatch number {}", dispath_num);
+            }
         }
     }    
 }
