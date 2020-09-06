@@ -48,15 +48,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Create a channel for generators to dispatcher, 
     // one sender could share with multi generator
     let (chan_tx_to_disp, chan_rx_by_disp) = 
-                    mpsc::channel::<[u8; MSG_LEN]>(1000 * MSG_LEN);
+                    mpsc::unbounded_channel::<[u8; MSG_LEN]>();
 
     // Create a group of channels for dispatcher to receivers
     // dispatcher hold all the sender, and dispatch message by the first byte of a message
     // hashmap: key = receiver_id from 1 : number of receiver, 0 reserve for futher use
-    let mut channels_tx_map : HashMap<u32, mpsc::Sender<[u8; MSG_LEN]>>  = HashMap::new();
-    let mut channels_rx_vec: VecDeque<mpsc::Receiver<[u8; MSG_LEN]>> = VecDeque::new();
+    let mut channels_tx_map : HashMap<u32, mpsc::UnboundedSender<[u8; MSG_LEN]>>  = HashMap::new();
+    let mut channels_rx_vec: VecDeque<mpsc::UnboundedReceiver<[u8; MSG_LEN]>> = VecDeque::new();
     for curr in 1 .. receiver_num + 1 {
-        let (sender, receiver) = mpsc::channel::<[u8; MSG_LEN]>(1000 * MSG_LEN);
+        let (sender, receiver) = mpsc::unbounded_channel::<[u8; MSG_LEN]>();
         channels_tx_map.insert(curr, sender);
         channels_rx_vec.push_back(receiver);
     }
@@ -127,7 +127,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 /// Receive messages from channel and dispatch them to the Receiver through 
 /// the TCP connnections
 async fn do_receive(_id: usize, 
-        mut rx: mpsc::Receiver<[u8; MSG_LEN]>, 
+        mut rx: mpsc::UnboundedReceiver<[u8; MSG_LEN]>, 
         counter: Arc<Mutex<usize>>) {
     loop {
         // Read message from the channel and wait replay
@@ -155,8 +155,8 @@ async fn do_receive(_id: usize,
 /// Parameter:
 /// 
 async fn do_dispatch(
-        mut chan_rx: mpsc::Receiver<[u8; MSG_LEN]>, 
-        mut chan_tx_map: std::collections::HashMap<u32, mpsc::Sender<[u8; MSG_LEN]>>,
+        mut chan_rx: mpsc::UnboundedReceiver<[u8; MSG_LEN]>, 
+        mut chan_tx_map: std::collections::HashMap<u32, mpsc::UnboundedSender<[u8; MSG_LEN]>>,
         counter: Arc<Mutex<usize>>) {
     loop {
         // Read message from the channel and wait replay
@@ -168,7 +168,7 @@ async fn do_dispatch(
                 //dispatch msg to a Receiver
                 match chan_tx_map.get_mut(&receiver_id) {
                     Some(tx_copy) => {
-                        if let Err(_) = tx_copy.send(msg).await {
+                        if let Err(_) = tx_copy.send(msg) {
                             println!("receiver thread dropped");
                             return;
                         }
@@ -195,7 +195,7 @@ async fn do_dispatch(
 /// 
 /// Receive message from the Generator and send the message to the corresponed receiver
 /// by using the first byte of the message
-async fn do_generate(mut chan_tx_to_disp: mpsc::Sender<[u8; MSG_LEN]>, 
+async fn do_generate(chan_tx_to_disp: mpsc::UnboundedSender<[u8; MSG_LEN]>, 
         receiver_num: u8, msg_num: u32,
         counter: Arc<Mutex<usize>>) {
     let send_bytes : Vec<u8> = (0..MSG_LEN).map(|_| { rand::random::<u8>() }).collect();
@@ -209,7 +209,7 @@ async fn do_generate(mut chan_tx_to_disp: mpsc::Sender<[u8; MSG_LEN]>,
         send_array[0] = n;
 
         // send message to dispatcher
-        if let Err(_) = chan_tx_to_disp.send(send_array).await {
+        if let Err(_) = chan_tx_to_disp.send(send_array) {
             println!("receiver thread dropped");
             return;
         }
