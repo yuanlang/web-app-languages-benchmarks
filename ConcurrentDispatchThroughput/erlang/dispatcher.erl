@@ -85,29 +85,31 @@ setup_generators(Recvs, Disp, GenNum, MsgLen) ->
 
 setup_generators([],_,  _, _, _, Out) -> Out;
 setup_generators([Recv|Recvs], Disp, Pid, GenNum, MsgLen, Out) ->
-    setup_generators(Recvs, Disp, Pid, GenNum, MsgLen, [spawn_link(fun() -> generator(Recv, Disp, Pid, GenNum, MsgLen) end) | Out]).
+	setup_generators(Recvs, Disp, Pid, GenNum, MsgLen, 
+		[spawn_link(fun() -> generator(Recv, Disp, Pid, GenNum, MsgLen) end) | Out]).
 
 %% processes
 
 receiver(Master) ->
     receive
-        {_, done} -> Master ! {self(), done};
-        {_, _} -> receiver(Master)
+        {_, done} 	-> Master ! {self(), done};
+        {_, _} 		-> receiver(Master)
     end.
 
 dispatcher(Master, N) ->
     receive
-		{Master, done}  -> io:format("Dispatched msg count: ~w~n", [N]), Master ! {self(), done}, ok;
-        {Pid, To, Data} -> To ! {Pid, Data},
+		{Master, done}  -> 	io:format("Dispatched msg count: ~w~n", [N]), 
+							Master ! {self(), done}, ok;
+        {Pid, To, Data} -> 	To ! {Pid, Data},
                             dispatcher(Master, N+1)
     end.
 
 generator(Recv, Disp, Master, GenNum, MsgLen) ->
     Data = lists:seq(1, MsgLen),
     receive
-		{Master, done} -> ok;
-        {Master, do} -> generator_push_loop(Recv, Disp, GenNum, Data);
-        {Master, do, NewN} -> generator_push_loop(Recv, Disp, NewN, Data)
+		{Master, done} 		-> ok;
+        {Master, do} 		-> generator_push_loop(Recv, Disp, GenNum, Data);
+        {Master, do, NewN} 	-> generator_push_loop(Recv, Disp, NewN, Data)
     end.
 
 generator_push_loop(Recv, Disp, 0, _) ->
