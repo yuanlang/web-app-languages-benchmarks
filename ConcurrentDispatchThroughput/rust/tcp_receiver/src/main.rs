@@ -27,12 +27,13 @@ use tokio::net::TcpListener;
 use std::env;
 use std::error::Error;
 
+const DEFAULT_ADDR: &str = "127.0.0.1:14001";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Allow passing an address to listen on as the first argument of this
     // program, but otherwise we'll just set up our TCP listener on
     // 127.0.0.1:14001 for connections.
-    const DEFAULT_ADDR: &str = "127.0.0.1:14001";
     let addr = env::args()
         .nth(1)
         .unwrap_or_else(|| DEFAULT_ADDR.to_string());
