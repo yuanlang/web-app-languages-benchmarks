@@ -87,8 +87,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Setup the generators
     let gene_counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
-    let mut remain_connection = generator_num;
-    while remain_connection > 0 {
+    for curr in 1 .. generator_num + 1 {
+        println!("Successfully create generator {}", curr);
         let gene_mutex = Arc::clone(&gene_counter);
         // get a copy of channel sender from hashmap, to allow the ownership move to 
         // the tokio thread and doesn't influence others
@@ -101,7 +101,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             do_generate(chan_tx_to_disp_copy, receiver_num as u8, 
                 total_msg_num / receiver_num, gene_mutex).await;
         });
-        remain_connection -= 1;
     }
 
     let start = Instant::now();
@@ -127,15 +126,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 ///
 /// Receive messages from channel and dispatch them to the Receiver through 
 /// the TCP connnections
-async fn do_receive(id: usize, 
+async fn do_receive(_id: usize, 
         mut rx: mpsc::Receiver<[u8; MSG_LEN]>, 
         counter: Arc<Mutex<usize>>) {
     loop {
         // Read message from the channel and wait replay
         match rx.recv().await {
-            Some(msg) => {
-                let n = msg[0];
-                println!("{} got msg type: {}", id, n);
+            Some(_msg) => {
+                // let _n = _msg[0];
+                // println!("{} got msg type: {}", _id, n);
 
                 //increase the counter
                 let mut num = counter.lock().unwrap();
@@ -164,7 +163,7 @@ async fn do_dispatch(
         match chan_rx.recv().await {
             Some(msg) => {
                 let receiver_id = msg[0] as u32;
-                println!("got receiver id: {}", receiver_id);
+                // println!("got receiver id: {}", receiver_id);
 
                 //dispatch msg to a Receiver
                 match chan_tx_map.get_mut(&receiver_id) {
@@ -178,7 +177,7 @@ async fn do_dispatch(
                         println!("Get the wrong dispatch number {}", receiver_id);
                     }
                 }
-                println!("Sent msg to No.{} Receiver.", receiver_id);
+                // println!("Sent msg to No.{} Receiver.", receiver_id);
                 
                 //increase the counter
                 let mut num = counter.lock().unwrap();
