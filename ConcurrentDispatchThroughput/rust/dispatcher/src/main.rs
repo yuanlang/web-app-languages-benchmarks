@@ -99,7 +99,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // `tokio::spawn` function to execute the work in the background.
         tokio::spawn(async move {
             do_generate(chan_tx_to_disp_copy, receiver_num as u8, 
-                total_msg_num / receiver_num, gene_mutex).await;
+                total_msg_num / generator_num, gene_mutex).await;
         });
     }
 
