@@ -23,7 +23,7 @@
 %% receives from generators to the appropriate receiver. Each generator 
 %% sends a number of messages to a specific receiver. The parameters of 
 %% the benchmark are the number of receivers, the number of messages and 
-%% the message length.
+%% the message MsgLen.
 %%
 
 %% Author  : Lang Yuan
@@ -31,72 +31,90 @@
 
 -module(dispatcher).
 
--export([bench_args/2, run/3]).
+% -export([bench_args/2, benchmark/1]).
 
-bench_args(Version, Conf) ->
-    {_,Cores} = lists:keyfind(number_of_cores, 1, Conf),
-	[F1, F2, F3] = case Version of
-		short -> [2, 16, 32];  
-		intermediate -> [2, 32, 40];  
-		long -> [5, 16, 32]
-	end,
-	[[P,N,L] || P <- [F1 * Cores], N <- [F2 * Cores], L <- [F3 * Cores]].
+% bench_args(Version, Conf) ->
+%     {_,Cores} = lists:keyfind(number_of_cores, 1, Conf),
+%     [F1, F2, F3] = case Version of
+%         short -> [2, 16, 32];  
+%         intermediate -> [2, 32, 40];  
+%         long -> [5, 16, 32]
+%     end,
+%     [[RecvNum,GenNum,MsgLen] || RecvNum <- [F1 * Cores], GenNum <- [F2 * Cores], MsgLen <- [F3 * Cores]].
 
-run([P,N,L|_], _, _) ->
-	Recvs = setup_receivers(P),
-	Disp  = setup_dispatcher(),
-	Gens  = setup_generators(Recvs, Disp, N, L),
-	[Pid ! {self(), do} || Pid <- Gens],
-	[receive {Pid, done} -> ok end || Pid <- Recvs],
-	Disp ! {self(), done},
-	ok.
+-export([benchmark/1]).
+
+benchmark(Args) ->
+	[RecvNum1,GenNum1,MsgLen1|_] = Args,
+	RecvNum = list_to_integer(RecvNum1),
+	GenNum  = list_to_integer(GenNum1),
+	MsgLen  = list_to_integer(MsgLen1),
+
+    Recvs = setup_receivers(RecvNum),
+    Disp  = setup_dispatcher(),
+    Gens  = setup_generators(Recvs, Disp, GenNum, MsgLen),
+    Start = erlang:system_time(millisecond),
+
+    [Pid ! {self(), do} || Pid <- Gens],
+    %wait for the processes to finish
+    % timer:sleep(1000*6),
+    [receive {Pid, done} -> ok end || Pid <- Recvs],
+    Disp ! {self(), done},
+    receive
+        {_, done} ->
+            End = erlang:system_time(millisecond),
+			io:format("Time taken to do the work: ~f seconds~n", [(End-Start)/1000]),
+			ok
+    end,
+    ok.
 
 %% setups
 
-setup_receivers(P) -> setup_receivers(P, self(), []).
+setup_receivers(RecvNum) -> setup_receivers(RecvNum, self(), []).
 
 setup_receivers(0, _, Out) -> Out;
-setup_receivers(P, Pid, Out) -> 
-	setup_receivers(P - 1, Pid, [spawn_link(fun() -> receiver(Pid) end)|Out]).
+setup_receivers(RecvNum, Pid, Out) -> 
+    setup_receivers(RecvNum - 1, Pid, [spawn_link(fun() -> receiver(Pid) end)|Out]).
 
 setup_dispatcher() ->
-	Me = self(),
-	spawn_link(fun() -> dispatcher(Me) end).
+    Me = self(),
+    spawn_link(fun() -> dispatcher(Me, 0) end).
 
-setup_generators(Recvs, Disp, N, L) ->
-	setup_generators(Recvs, Disp, self(), N, L, []).
+setup_generators(Recvs, Disp, GenNum, MsgLen) ->
+    setup_generators(Recvs, Disp, self(), GenNum, MsgLen, []).
 
 setup_generators([],_,  _, _, _, Out) -> Out;
-setup_generators([Recv|Recvs], Disp, Pid, N, L, Out) ->
-	setup_generators(Recvs, Disp, Pid, N, L, [spawn_link(fun() -> generator(Recv, Disp, Pid, N, L) end) | Out]).
+setup_generators([Recv|Recvs], Disp, Pid, GenNum, MsgLen, Out) ->
+    setup_generators(Recvs, Disp, Pid, GenNum, MsgLen, [spawn_link(fun() -> generator(Recv, Disp, Pid, GenNum, MsgLen) end) | Out]).
 
 %% processes
 
 receiver(Master) ->
-	receive
-		{_, done} -> Master ! {self(), done};
-		{_, _} -> receiver(Master)
-	end.
+    receive
+        {_, done} -> Master ! {self(), done};
+        {_, _} -> receiver(Master)
+    end.
 
-dispatcher(Master) ->
-	receive
+dispatcher(Master, N) ->
+    receive
+		{Master, done}  -> io:format("Dispatched msg count: ~w~n", [N]), Master ! {self(), done}, ok;
+        {Pid, To, Data} -> To ! {Pid, Data},
+                            dispatcher(Master, N+1)
+    end.
+
+generator(Recv, Disp, Master, GenNum, MsgLen) ->
+    Data = lists:seq(1, MsgLen),
+    receive
 		{Master, done} -> ok;
-		{Pid, To, Data} -> 	To ! {Pid, Data},
-							dispatcher(Master)
-	end.
-
-generator(Recv, Disp, Master, N, L) ->
-	Data = lists:seq(1, L),
-	receive
-		{Master, do} -> generator_push_loop(Recv, Disp, N, Data);
-		{Master, do, NewN} -> generator_push_loop(Recv, Disp, NewN, Data)
-	end.
+        {Master, do} -> generator_push_loop(Recv, Disp, GenNum, Data);
+        {Master, do, NewN} -> generator_push_loop(Recv, Disp, NewN, Data)
+    end.
 
 generator_push_loop(Recv, Disp, 0, _) ->
-	Disp ! {self(), Recv, done};
-generator_push_loop(Recv, Disp, N, Data) ->
-	Disp ! {self(), Recv, Data},
-	generator_push_loop(Recv, Disp, N - 1, Data).
+    Disp ! {self(), Recv, done};
+generator_push_loop(Recv, Disp, GenNum, Data) ->
+    Disp ! {self(), Recv, Data},
+    generator_push_loop(Recv, Disp, GenNum-1, Data).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 
