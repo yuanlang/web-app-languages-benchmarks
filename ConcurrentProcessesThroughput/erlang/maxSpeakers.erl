@@ -1,19 +1,23 @@
 -module(maxSpeakers).
--compile(export_all).
+-export([benchmark/1]).
 
 benchmark([N]) ->
     process_flag(priority, max),
     Start = erlang:system_time(millisecond),
-    Monitor = spawn(?MODULE, aggregator, [0, erlang:system_time(millisecond)]),
+    Monitor = spawn(?MODULE, aggregator(0, erlang:system_time(millisecond))),
     NumOfServers = element(1, string:to_integer(N)),
     Servers = serverSpawner(Monitor, NumOfServers, bytes_generate(500)),
     End = erlang:system_time(millisecond),
     io:format("Time taken to create servers: ~f seconds~n", [(End-Start)/1000]),
+
+    % phrase start
     Start2 = erlang:system_time(millisecond),
 
     [Pid ! "Start" || Pid <- Servers],
-    %wait for the processes to finish
+    
+    %wait a period time, then calculate the msg count
     timer:sleep(1000*60),
+
     Monitor ! "Show",
     receive
         "Done" ->
@@ -21,16 +25,17 @@ benchmark([N]) ->
             io:format("Time taken to do the work: ~f seconds~n", [(End2-Start2)/1000])
     end.
 
-serverSpawner(Monitor, 0, D) -> [];
+serverSpawner(_Monitor, 0, _D) -> [];
 
 serverSpawner(Monitor, N, D) when N>0 ->
     io:format("N: ~w times~n", [N]),
-    [spawn(?MODULE, server, [Monitor, clientSpawner(1), 0, D]) | serverSpawner(Monitor, N-1, D) ].    
+    [spawn(?MODULE, server(Monitor, clientSpawner(1), 0, D)) 
+        | serverSpawner(Monitor, N-1, D) ].
 
 clientSpawner(0) -> [];
 
 clientSpawner(N) when N>0 ->
-    [spawn(?MODULE, client, []) | clientSpawner(N-1) ].  
+    [spawn(?MODULE, client()) | clientSpawner(N-1)].
 
 server(Monitor, Clients, 100, Data) ->
     Monitor ! 100,
@@ -39,6 +44,8 @@ server(Monitor, Clients, 100, Data) ->
 server(Monitor, Clients, MessagesCount, Data) ->
     receive
         "Start" ->
+            % ? why send message to all clients?
+            % Although use clients, it only has one instance
             [Pid ! {"Hello",self(), Data} || Pid <- Clients],
             server(Monitor, Clients, MessagesCount, Data);
         {"Done", Pid, Data} ->
