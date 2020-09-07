@@ -19,12 +19,19 @@ use std::error::Error;
 use std::collections::HashMap;
 
 use std::sync::{Arc, Mutex};
-use std::thread;
+// use std::thread;
 use std::time::{Instant};
-use std::time::Duration;
+// use std::time::Duration;
 
 const MSG_LEN: usize = 1500; //data length
 const MSG_QUEUE_LEN: usize = 100; //message queue length
+
+enum Command {
+    Data(),
+    Done(),
+}
+
+type Message = (Command, [u8; MSG_LEN]);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -49,18 +56,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let runtime = Runtime::new().unwrap();
 
+    // Create a channel for all others to master, 
+    // one sender could share with multi users
+    let (chan_tx_to_master, mut chan_rx_by_master) = 
+                    mpsc::channel::<Message>(MSG_QUEUE_LEN * MSG_LEN);
+
     // Create a channel for generators to dispatcher, 
     // one sender could share with multi generator
     let (chan_tx_to_disp, chan_rx_by_disp) = 
-                    mpsc::channel::<[u8; MSG_LEN]>(MSG_QUEUE_LEN * MSG_LEN);
+                    mpsc::channel::<Message>(MSG_QUEUE_LEN * MSG_LEN);
 
     // Create a group of channels for dispatcher to receivers
     // dispatcher hold all the sender, and dispatch message by the first byte of a message
     // hashmap: key = receiver_id from 1 : number of receiver, 0 reserve for futher use
-    let mut channels_tx_map : HashMap<u32, mpsc::Sender<[u8; MSG_LEN]>>  = HashMap::new();
-    let mut channels_rx_vec: VecDeque<mpsc::Receiver<[u8; MSG_LEN]>> = VecDeque::new();
+    let mut channels_tx_map : HashMap<u32, mpsc::Sender<Message>> = HashMap::new();
+    let mut channels_rx_vec: VecDeque<mpsc::Receiver<Message>> = VecDeque::new();
     for curr in 1 .. receiver_num + 1 {
-        let (sender, receiver) = mpsc::channel::<[u8; MSG_LEN]>(MSG_QUEUE_LEN * MSG_LEN);
+        let (sender, receiver) = mpsc::channel::<Message>(MSG_QUEUE_LEN * MSG_LEN);
         channels_tx_map.insert(curr, sender);
         channels_rx_vec.push_back(receiver);
     }
@@ -72,10 +84,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     while let Some(rx1) = channels_rx_vec.pop_front() {
         let recv_mutex = Arc::clone(&recv_counter);
         println!("Successfully create receiver {}", curr);
-
+        let chan_tx_to_master_copy = chan_tx_to_master.clone();
         // get the channel receiver first
         runtime.spawn(async move {
-            do_receive(curr, rx1, recv_mutex).await;
+            do_receive(curr, rx1, chan_tx_to_master_copy, recv_mutex).await;
         });
 
         curr = curr + 1;
@@ -88,6 +100,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     runtime.spawn(async move {
         do_dispatch(chan_rx_by_disp, channels_tx_map, disp_mutex).await;
     });
+
+    let start = Instant::now();
 
     // Setup the generators
     let gene_counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
@@ -102,13 +116,36 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // blocking one on completion of another. To achieve this we use the
         // `tokio::spawn` function to execute the work in the background.
         runtime.spawn(async move {
-            do_generate(chan_tx_to_disp_copy, receiver_num as u8, gene_mutex).await;
+            do_generate(chan_tx_to_disp_copy, receiver_num as u8, 
+                total_msg_num / receiver_num, gene_mutex).await;
         });
     }
 
-    let start = Instant::now();
+    //wait for all receiver sent done
+    let mut recv_done_cnt = 0;
+    loop {
+        match chan_rx_by_master.recv().await {
+            Some((cmd, _msg)) => {
+                match cmd {
+                    Command::Data() => {
+                        //do nothing
+                    }
+                    Command::Done() => {
+                        println!("receive done message from receiver");
+                        recv_done_cnt += 1;
 
-    thread::sleep(Duration::from_secs(6));
+                        if recv_done_cnt == receiver_num {
+                            break;
+                        }
+                    },
+                }
+            },
+            None => {
+                //do nothing
+            }
+        }
+    }
+    // thread::sleep(Duration::from_secs(6));
 
     // get lock, copy the counters
     let gene_num = *gene_counter.lock().unwrap();
@@ -132,18 +169,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
 /// Receive messages from channel and dispatch them to the Receiver through 
 /// the TCP connnections
 async fn do_receive(_id: usize, 
-        mut rx: mpsc::Receiver<[u8; MSG_LEN]>, 
+        mut rx: mpsc::Receiver<Message>, 
+        mut tx_to_master: mpsc::Sender<Message>, 
         counter: Arc<Mutex<usize>>) {
     loop {
         // Read message from the channel and wait replay
         match rx.recv().await {
-            Some(_msg) => {
-                // let _n = _msg[0];
-                // println!("{} got msg type: {}", _id, n);
+            Some((cmd, msg)) => {
+                match cmd {
+                    Command::Data() => {
+                        // let n = msg[0];
+                        // println!("{} got msg type: {}", _id, n);
 
-                //increase the counter
-                let mut num = counter.lock().unwrap();
-                *num += 1;
+                        //increase the counter
+                        let mut num = counter.lock().unwrap();
+                        *num += 1;
+                    },
+                    Command::Done() => {
+                        println!("{} receive done message from generator", _id);
+                        //send done back to master
+                        if let Err(_) = tx_to_master.send((cmd, msg)).await {
+                            println!("receiver thread dropped");
+                            return;
+                        }
+                    },
+                }
             },
             None => {
                 // do nothing
@@ -160,20 +210,20 @@ async fn do_receive(_id: usize,
 /// Parameter:
 /// 
 async fn do_dispatch(
-        mut chan_rx: mpsc::Receiver<[u8; MSG_LEN]>, 
-        mut chan_tx_map: std::collections::HashMap<u32, mpsc::Sender<[u8; MSG_LEN]>>,
+        mut chan_rx: mpsc::Receiver<Message>, 
+        mut chan_tx_map: std::collections::HashMap<u32, mpsc::Sender<Message>>,
         counter: Arc<Mutex<usize>>) {
     loop {
         // Read message from the channel and wait replay
         match chan_rx.recv().await {
-            Some(msg) => {
+            Some((cmd, msg)) => {
                 let receiver_id = msg[0] as u32;
                 // println!("got receiver id: {}", receiver_id);
 
                 //dispatch msg to a Receiver
                 match chan_tx_map.get_mut(&receiver_id) {
                     Some(tx_copy) => {
-                        if let Err(_) = tx_copy.send(msg).await {
+                        if let Err(_) = tx_copy.send((cmd, msg)).await {
                             println!("receiver thread dropped");
                             return;
                         }
@@ -200,21 +250,22 @@ async fn do_dispatch(
 /// 
 /// Receive message from the Generator and send the message to the corresponed receiver
 /// by using the first byte of the message
-async fn do_generate(mut chan_tx_to_disp: mpsc::Sender<[u8; MSG_LEN]>, 
+async fn do_generate(mut chan_tx_to_disp: mpsc::Sender<Message>, 
         receiver_num: u8,
+        msg_num: u32,
         counter: Arc<Mutex<usize>>) {
     let send_bytes : Vec<u8> = (0..MSG_LEN).map(|_| { rand::random::<u8>() }).collect();
     let mut send_array = [0u8; MSG_LEN];
     send_array.copy_from_slice(&send_bytes);
 
     // In a loop, read data from the socket and write the data back.
-    loop {
+    for _i in 0 .. msg_num{
         // gen receiver id
         let n = rand::random::<u8>() % receiver_num + 1;
         send_array[0] = n;
 
         // send message to dispatcher
-        if let Err(_) = chan_tx_to_disp.send(send_array).await {
+        if let Err(_) = chan_tx_to_disp.send((Command::Data(), send_array)).await {
             println!("receiver thread dropped");
             return;
         }
@@ -222,5 +273,12 @@ async fn do_generate(mut chan_tx_to_disp: mpsc::Sender<[u8; MSG_LEN]>,
         //increase the counter
         let mut num = counter.lock().unwrap();
         *num += 1;
-    }    
+    }
+
+    // send a done message to receiver
+    if let Err(_) = chan_tx_to_disp.send((Command::Done(), send_array)).await {
+        println!("receiver thread dropped");
+        return;
+    }
+
 }
