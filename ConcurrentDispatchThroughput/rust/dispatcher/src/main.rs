@@ -9,6 +9,8 @@
 
 use tokio::sync::mpsc;
 use tokio::runtime::Runtime;
+use tokio::sync::oneshot;
+
 use std::collections::VecDeque;
 
 use std::env;
@@ -22,6 +24,7 @@ use std::time::{Instant};
 const MSG_QUEUE_LEN: usize = 100; //message queue length
 
 enum Command {
+    Start(),
     Data(),
     Done(),
 }
@@ -65,7 +68,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (chan_tx_to_disp, chan_rx_by_disp) = 
                     mpsc::channel::<Message>(MSG_QUEUE_LEN * msg_length);
 
-    // Create a group of channels for dispatcher to receivers
+    // Create a group of one-shot channels from master to generator
+    // to tell them start to generate message and send
+    // hashmap: key = generator_id from 1 : number of generator, 0 reserve for futher use
+    let mut channels_tx_to_gene_vec: VecDeque<oneshot::Sender<Message>> = VecDeque::new();
+    let mut channels_rx_by_gene_vec: VecDeque<oneshot::Receiver<Message>> = VecDeque::new();
+    for _curr in 1 .. receiver_num + 1 {
+        let (sender, receiver) = oneshot::channel::<Message>();
+        channels_tx_to_gene_vec.push_back(sender);
+        channels_rx_by_gene_vec.push_back(receiver);
+    }
+
+    // Create a group of channels from dispatcher to receivers
     // dispatcher hold all the sender, and dispatch message by the first byte of a message
     // hashmap: key = receiver_id from 1 : number of receiver, 0 reserve for futher use
     let mut channels_tx_map : HashMap<u32, mpsc::Sender<Message>> = HashMap::new();
@@ -100,11 +114,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         do_dispatch(chan_rx_by_disp, channels_tx_map, disp_mutex).await;
     });
 
-    let start = Instant::now();
-
     // Setup the generators
     let gene_counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
-    for curr in 1 .. generator_num + 1 {
+    let mut curr = 1;
+    while let Some(rx1) = channels_rx_by_gene_vec.pop_front() {
         println!("Successfully create generator {}", curr);
         let gene_mutex = Arc::clone(&gene_counter);
         // get a copy of channel sender from hashmap, to allow the ownership move to 
@@ -115,9 +128,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // blocking one on completion of another. To achieve this we use the
         // `tokio::spawn` function to execute the work in the background.
         runtime.spawn(async move {
-            do_generate(curr as u8, chan_tx_to_disp_copy, receiver_num as u8, 
+            do_generate(curr as u8, chan_tx_to_disp_copy, rx1, receiver_num as u8, 
                 total_msg_num / receiver_num, msg_length, gene_mutex).await;
         });
+        curr += 1;
+    }
+
+    let start = Instant::now();
+
+    // send start to generator
+    let mut curr = 1;
+    while let Some(tx1) = channels_tx_to_gene_vec.pop_front() {
+        println!("Successfully send start message to generator {}", curr);
+        let send_bytes : Vec<u8> = (0..msg_length).map(|_| { rand::random::<u8>() }).collect();
+        if let Err(_) = tx1.send((Command::Start(), send_bytes)) {
+            println!("the receiver dropped");
+        }
+
+        curr += 1;
     }
 
     //wait for all receiver sent done
@@ -126,6 +154,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         match chan_rx_by_master.recv().await {
             Some((cmd, _msg)) => {
                 match cmd {
+                    Command::Start() => {
+                        //do nothing
+                    },
                     Command::Data() => {
                         //do nothing
                     }
@@ -176,6 +207,9 @@ async fn do_receive(_id: usize,
         match rx.recv().await {
             Some((cmd, msg)) => {
                 match cmd {
+                    Command::Start() => {
+                        //do nothing
+                    },
                     Command::Data() => {
                         // let n = msg[0];
                         // println!("{} got msg type: {}", _id, n);
@@ -252,6 +286,7 @@ async fn do_dispatch(
 async fn do_generate(
         _id: u8,
         mut chan_tx_to_disp: mpsc::Sender<Message>, 
+        chan_rx: oneshot::Receiver<Message>,
         receiver_num: u8,
         msg_num: u32,
         msg_len: usize,
@@ -259,6 +294,25 @@ async fn do_generate(
     let mut send_bytes : Vec<u8> = (0..msg_len).map(|_| { rand::random::<u8>() }).collect();
     // let mut send_array = [0u8; MAX_MSG_LEN];
     // send_array.copy_from_slice(&send_bytes);
+
+    match chan_rx.await {
+        Ok((cmd, _msg)) => {
+            match cmd {
+                Command::Start() => {
+                    println!("{} recv start msg from master", _id);
+                },
+                Command::Data() => {
+                    //do nothing
+                },
+                Command::Done() => {
+                    //do nothing
+                }
+            }
+        },
+        Err(_err) => {
+            // do nothing
+        },
+    }
 
     // In a loop, read data from the socket and write the data back.
     for _i in 0 .. msg_num{
