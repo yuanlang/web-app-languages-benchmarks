@@ -148,7 +148,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         curr += 1;
     }
 
-    //wait for all receiver sent done
+    //wait for all receiver sent done msg
     let mut recv_done_cnt = 0;
     loop {
         match chan_rx_by_master.recv().await {
