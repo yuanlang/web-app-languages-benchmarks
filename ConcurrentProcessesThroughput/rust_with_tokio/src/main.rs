@@ -8,9 +8,9 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 const MSG_LENGTH: usize = 500; //data length
-const MSG_QUEUE_LENGTH: usize = 100;
+const MSG_QUEUE_LENGTH: usize = 100; //length of message queue
 const TEST_DURATION: u64 = 60; //the length of test, in seconds
-const FREQUENT: usize = 100;  //report messages per time
+const FREQUENT: usize = 1000;  //report messages per time
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
