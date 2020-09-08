@@ -1,6 +1,6 @@
 #!/bin/sh
 filename="test.result.`date +"%Y%m%d-%H%M%S"`"
-for lang in go erlang scala
+for lang in go erlang scala rust
 do
 cd $lang
 echo "process language: $lang"

@@ -21,39 +21,37 @@ fn main() {
     let send_bytes : Vec<u8> = (0..d).map(|_| { rand::random::<u8>() }).collect();
     //println!("{:?}", send_bytes_1);
 
-    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    // let (tx_to_aggregator, rx_by_aggregator) = mpsc::channel::<u32>();
 
     // Create thread pool according to the parameter
     let tx_counter = Arc::new(Mutex::new(0));
     let start = Instant::now();
-    let mut thread_holder = vec![];
+    let mut server_thread_holder = vec![];
+    let mut client_thread_holder = vec![];
     for _i in 0 .. n {
-        let tx1 = mpsc::Sender::clone(&tx);
+        let (tx_to_client, rx_by_server) = mpsc::channel::<Vec<u8>>();
+        let (tx_to_server, rx_by_client) = mpsc::channel::<Vec<u8>>();
+        // let tx_to_client = mpsc::Sender::clone(&tx);
         let counter1 = Arc::clone(&tx_counter);
         let send_bytes_copy = send_bytes.clone();
-        thread_holder.push(thread::spawn(move || {
-            loop {
+        
+        //spawn server threads
+        server_thread_holder.push(thread::spawn(move || {
+            let sending = send_bytes_copy.clone();
+            tx_to_client.send(sending.to_vec()).unwrap();
+            while let Ok(msg) = rx_by_server.recv() {
+                // received message means one round finish, an increase of 1
                 let mut num = counter1.lock().unwrap();
-                let sending = send_bytes_copy.clone();
-                tx1.send(sending.to_vec()).unwrap();
                 *num += 1;
+                tx_to_client.send(msg).unwrap();
             }
         }));
-    }
 
-    let counter = Arc::new(Mutex::new(0));
-    let receiver = Arc::new(Mutex::new(rx));
-    
-    let mut aggregator_holder = vec![];
-    for _i in 0 .. n {
-        let counter1 = Arc::clone(&counter);
-        let thread_receiver = Arc::clone(&receiver);
-        aggregator_holder.push(thread::spawn(move || loop {
-            let d = Duration::from_millis(10);
-            let mut num = counter1.lock().unwrap();
-            //println!("aggregator recv");
-            let _r = thread_receiver.lock().unwrap().recv_timeout(d);
-            *num += 1;
+        //spawn client threads
+        client_thread_holder.push(thread::spawn(move || {
+            while let Ok(msg) = rx_by_client.recv() {
+                tx_to_server.send(msg).unwrap();
+            }
         }));
     }
 
@@ -63,7 +61,6 @@ fn main() {
 
     println!("Total time taken seconds: {:?} ", duration.as_secs_f64());
     println!("Total send messages: {} ", *tx_counter.lock().unwrap());
-    println!("Total recv messages: {} ", *counter.lock().unwrap());
 
     std::process::exit(0);
 }
