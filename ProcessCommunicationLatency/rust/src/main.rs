@@ -29,8 +29,12 @@ fn main() {
     let p1 = thread::spawn(move || {
         let mut num = 0;
         while num < r {
+            // this is different from other language
+            // other langauge no need to clone it every time
+            // the overhead all become bigger whent the message size is bigger
+            // in Go, it only sends a pointer to the buffer
             let sending = send_bytes_1.clone();
-            tx1.send(sending.to_vec()).unwrap();
+            tx1.send(sending).unwrap();
             num += 1;
             rx2.recv().unwrap();
         }
@@ -40,8 +44,11 @@ fn main() {
     let p2 = thread::spawn(move || {
         let mut num = 0;
         while num < r {
+            // this is different from other language
+            // other langauge no need to clone it every time
+            // the overhead all become bigger whent the message size is bigger
             let sending = send_bytes_2.clone();
-            tx2.send(sending.to_vec()).unwrap();
+            tx2.send(sending).unwrap();
             num += 1;
             rx1.recv().unwrap();
         }

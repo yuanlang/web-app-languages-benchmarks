@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let mut num = 0;
         while num < repeat_num {
             let sending = send_bytes_1.clone();
-            if let Err(_) = tx1.send(sending.to_vec()).await {
+            if let Err(_) = tx1.send(sending).await {
                 println!("the receiver dropped");
             }
             num += 1;
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let mut num = 0;
         while num < repeat_num{
             let sending = send_bytes_2.clone();
-            if let Err(_) = tx2.send(sending.to_vec()).await {
+            if let Err(_) = tx2.send(sending).await {
                 println!("the receiver dropped");
             }
             num += 1;
