@@ -27,7 +27,7 @@ use tokio::net::TcpListener;
 use std::env;
 use std::error::Error;
 
-const DEFAULT_ADDR: &str = "127.0.0.1:14001";
+use dispatcher::{DEFAULT_RECV_ADDR};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // 127.0.0.1:14001 for connections.
     let addr = env::args()
         .nth(1)
-        .unwrap_or_else(|| DEFAULT_ADDR.to_string());
+        .unwrap_or_else(|| DEFAULT_RECV_ADDR.to_string());
 
     // Next up we create a TCP listener which will listen for incoming
     // connections. This TCP listener is bound to the address we determined

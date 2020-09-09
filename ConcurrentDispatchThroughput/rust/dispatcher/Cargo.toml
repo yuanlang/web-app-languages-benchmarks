@@ -1,5 +1,5 @@
 [package]
-name = "tcp_server"
+name = "dispatcher"
 version = "0.1.0"
 authors = ["Lang Yuan <peacocker@163.com>"]
 edition = "2018"

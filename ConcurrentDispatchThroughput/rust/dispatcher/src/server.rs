@@ -37,26 +37,7 @@ use std::thread;
 use std::time::{Instant};
 use std::time::Duration;
 
-const MSG_LEN: usize = 500; //data length
-
-#[repr(u8)]
-enum Command {
-    Start = 1,
-    Data  = 2,
-    Done  = 3,
-    Unknown = 4,
-}
-
-impl From<u8> for Command {
-    fn from(orig: u8) -> Self {
-        match orig {
-            0x1 => return Command::Start,
-            0x2 => return Command::Data,
-            0x3 => return Command::Done,
-            _   => return Command::Unknown,
-        };
-    }
-}
+use dispatcher::{Command, MSG_LEN};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -122,10 +103,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Allow passing an address to listen on as the first argument of this
     // program, but otherwise we'll just set up our TCP listener on
     // 127.0.0.1:8888 for connections.
-    const DEFAULT_ADDR: &str = "127.0.0.1:8888";
+    const DEFAULT_SERVER_ADDR: &str = "127.0.0.1:8888";
     let addr = env::args()
         .nth(2)
-        .unwrap_or_else(|| DEFAULT_ADDR.to_string());
+        .unwrap_or_else(|| DEFAULT_SERVER_ADDR.to_string());
 
     // Create a TCP listener which will listen for incoming
     // connections. This TCP listener is bound to the address we determined

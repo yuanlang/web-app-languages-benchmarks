@@ -9,26 +9,7 @@ use std::thread;
 use std::time::{Instant};
 use std::time::Duration;
 
-const MSG_LEN: usize = 500; //data length
-
-#[repr(u8)]
-enum Command {
-    Start = 1,
-    Data  = 2,
-    Done  = 3,
-    Unknown = 4,
-}
-
-impl From<u8> for Command {
-    fn from(orig: u8) -> Self {
-        match orig {
-            0x1 => return Command::Start,
-            0x2 => return Command::Data,
-            0x3 => return Command::Done,
-            _   => return Command::Unknown,
-        };
-    }
-}
+use dispatcher::{Command, MSG_LEN};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
