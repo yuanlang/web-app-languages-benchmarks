@@ -35,27 +35,33 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let start = Instant::now();
     let _p1 = tokio::spawn(async move {
         let mut num = 0;
+        if let Err(_) = tx1.send(send_bytes_1).await {
+            println!("the receiver dropped");
+        }
+        num += 1;
         while num < repeat_num {
-            let sending = send_bytes_1.clone();
-            if let Err(_) = tx1.send(sending).await {
+            let msg = rx2.recv().await.unwrap();
+            if let Err(_) = tx1.send(msg).await {
                 println!("the receiver dropped");
             }
             num += 1;
-            rx2.recv().await;
         }
-        
+        rx2.recv().await.unwrap();
     });
 
     let _p2 = tokio::spawn(async move {
         let mut num = 0;
+        if let Err(_) = tx2.send(send_bytes_2).await {
+            println!("the receiver dropped");
+        }
         while num < repeat_num{
-            let sending = send_bytes_2.clone();
-            if let Err(_) = tx2.send(sending).await {
+            let msg = rx1.recv().await.unwrap();
+            if let Err(_) = tx2.send(msg).await {
                 println!("the receiver dropped");
             }
             num += 1;
-            rx1.recv().await;
         }
+        rx1.recv().await.unwrap();
     });
 
     let _result1 = _p1.await;

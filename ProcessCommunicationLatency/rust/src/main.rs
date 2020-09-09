@@ -28,30 +28,33 @@ fn main() {
     let start = Instant::now();
     let p1 = thread::spawn(move || {
         let mut num = 0;
+        tx1.send(send_bytes_1).unwrap();
+        num += 1;
         while num < r {
             // this is different from other language
             // other langauge no need to clone it every time
             // the overhead all become bigger whent the message size is bigger
             // in Go, it only sends a pointer to the buffer
-            let sending = send_bytes_1.clone();
-            tx1.send(sending).unwrap();
+            let msg = rx2.recv().unwrap();
+            tx1.send(msg).unwrap();
             num += 1;
-            rx2.recv().unwrap();
         }
-        
+        rx2.recv().unwrap();
     });
 
     let p2 = thread::spawn(move || {
         let mut num = 0;
+        tx2.send(send_bytes_2).unwrap();
+        num += 1;
         while num < r {
             // this is different from other language
             // other langauge no need to clone it every time
             // the overhead all become bigger whent the message size is bigger
-            let sending = send_bytes_2.clone();
-            tx2.send(sending).unwrap();
+            let msg = rx1.recv().unwrap();
             num += 1;
-            rx1.recv().unwrap();
+            tx2.send(msg).unwrap();
         }
+        rx1.recv().unwrap();
     });
 
     // let p3 = thread::spawn(move || {
