@@ -18,7 +18,7 @@ use std::thread;
 use std::time::{Instant};
 use std::time::Duration;
 
-use dispatcher::{Command, MSG_LEN};
+use dispatcher::{Command, MSG_LEN, DEFAULT_SERVER_ADDR};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let start = Instant::now();
     let mut gene_thread_holder: Vec<JoinHandle<()>> = Vec::new();
     for curr in 0 .. connect_num {
-        match TcpStream::connect("localhost:8888").await {
+        match TcpStream::connect(&DEFAULT_SERVER_ADDR).await {
             Ok(stream) => {
                 println!("No.{} Successfully connected to server in port 8888", curr);
                 let disp_mutex = Arc::clone(&disp_counter);
