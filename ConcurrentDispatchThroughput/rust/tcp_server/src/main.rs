@@ -39,6 +39,25 @@ use std::time::Duration;
 
 const MSG_LEN: usize = 500; //data length
 
+#[repr(u8)]
+enum Command {
+    Start = 1,
+    Data  = 2,
+    Done  = 3,
+    Unknown = 4,
+}
+
+impl From<u8> for Command {
+    fn from(orig: u8) -> Self {
+        match orig {
+            0x1 => return Command::Start,
+            0x2 => return Command::Data,
+            0x3 => return Command::Done,
+            _   => return Command::Unknown,
+        };
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
@@ -115,10 +134,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Listening on: {}", addr);
 
     // To limit the number of connections
-    let mut remain_connection = connect_num;
-    while remain_connection > 0 {
+    let mut connection_id = 1;
+    while connection_id < connect_num + 1 {
         // Asynchronously wait for an inbound socket.
         let (socket, _) = listener.accept().await?;
+
+        println!("recv connnection, id {}", connection_id);
 
         // get a copy of senders hashmap, to allow the ownership move to 
         // the tokio thread and doesn't influence others
@@ -128,9 +149,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // blocking one on completion of another. To achieve this we use the
         // `tokio::spawn` function to execute the work in the background.
         tokio::spawn(async move {
-            push_msg_to_channel(socket, channels_tx_map_copy).await;
+            push_msg_to_channel(connection_id, socket, channels_tx_map_copy).await;
         });
-        remain_connection -= 1;
+        connection_id += 1;
     }
 
     let start = Instant::now();
@@ -163,6 +184,10 @@ async fn do_dispatch(id: usize,
                 let n = msg[0];
                 println!("got msg type: {}", n);
 
+                // parse the message
+
+                // if this is the last Done message, record as end time
+
                 match stream.write(&msg).await {
                     Ok(_) => {
                         println!("Sent msg to No.{} Receiver.", id);
@@ -188,35 +213,52 @@ async fn do_dispatch(id: usize,
 /// 
 /// Receive message from the Generator and send the message to the corresponed receiver
 /// by using the first byte of the message
-async fn push_msg_to_channel(mut socket: tokio::net::TcpStream, 
+async fn push_msg_to_channel(connection_id: u32, mut socket: tokio::net::TcpStream, 
     mut channels_tx_map_copy: std::collections::HashMap<u32, mpsc::Sender<[u8; MSG_LEN]>>) {
 
     // In a loop, read data from the socket and write the data back.
     loop {
-        let mut buf = [0; MSG_LEN];
+        let mut buf = [0u8; MSG_LEN];
         let n = socket
             .read(&mut buf)
             .await
             .expect("failed to read data from socket connected to the Generator");
 
         if n == 0 {
-            println!("receive zero length message");
+            println!("receive zero length message {}", connection_id);
             return;
         }
 
-        // Dispatch the message to receiver thread by the first byte
-        let dispath_num = buf[0] as u32;
-        println!("Get dispath num {}", dispath_num);
-        match channels_tx_map_copy.get_mut(&dispath_num) {
-            Some(tx_copy) => {
-                if let Err(_) = tx_copy.send(buf).await {
-                    println!("receiver thread dropped");
-                    return;
+        // parse the message
+        let cmd: Command = buf[0].into();
+        match cmd {
+            Command::Start => {
+                // if the message is a start message, it will record as start time
+                println!("{} receive start message", connection_id)
+            },
+            Command::Data => {
+                // Dispatch the message to receiver thread by the first byte
+                let dispath_num = buf[1] as u32;
+                println!("Get dispath num {}", dispath_num);
+                match channels_tx_map_copy.get_mut(&dispath_num) {
+                    Some(tx_copy) => {
+                        if let Err(_) = tx_copy.send(buf).await {
+                            println!("receiver thread dropped");
+                            return;
+                        }
+                    },
+                    None => {
+                        println!("Get the wrong dispatch number {}", dispath_num);
+                    }
                 }
             },
-            None => {
-                println!("Get the wrong dispatch number {}", dispath_num);
-            }
+            Command::Done => {
+                println!("{} receive done message", connection_id)
+            },
+            Command::Unknown => {
+                // do nothing
+            },
         }
+
     }    
 }

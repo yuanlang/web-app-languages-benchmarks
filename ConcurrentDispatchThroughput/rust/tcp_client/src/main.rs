@@ -11,13 +11,32 @@ use std::time::Duration;
 
 const MSG_LEN: usize = 500; //data length
 
+#[repr(u8)]
+enum Command {
+    Start = 1,
+    Data  = 2,
+    Done  = 3,
+    Unknown = 4,
+}
+
+impl From<u8> for Command {
+    fn from(orig: u8) -> Self {
+        match orig {
+            0x1 => return Command::Start,
+            0x2 => return Command::Data,
+            0x3 => return Command::Done,
+            _   => return Command::Unknown,
+        };
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
         println!("invalid number of connections");
-        println!("cargo run connect_num");
+        println!("cargo run connect_num repeat_num");
         std::process::exit(0);
     }
 
@@ -60,6 +79,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 async fn do_send_and_close(repeat_num: u32, 
         mut stream: TcpStream, 
         counter: Arc<Mutex<usize>>) {
+    // send the Start action
+    let mut send_start : Vec<u8> = Vec::new();
+    send_start.push(Command::Start as u8);
+    stream.write(&send_start).unwrap();
+
+    // start the send work
     for _i in 0 .. repeat_num {
         let mut send_bytes : Vec<u8> = (0..MSG_LEN).map(|_| { rand::random::<u8>() }).collect();
 
@@ -67,7 +92,8 @@ async fn do_send_and_close(repeat_num: u32,
         let mut rng = thread_rng();
         let n: u8 = rng.gen_range(1, 11);
 
-        send_bytes[0] = n;
+        send_bytes[0] = Command::Data as u8;
+        send_bytes[1] = n;
         stream.write(&send_bytes).unwrap();
         println!("Sent msg to No.{} receiver ", n);
 
@@ -75,6 +101,14 @@ async fn do_send_and_close(repeat_num: u32,
         let mut num = counter.lock().unwrap();
         *num += 1;
     }
+
+    // send the Start action
+    let mut send_done : Vec<u8> = Vec::new();
+    send_done.push(Command::Done as u8);
+    stream.write(&send_done).unwrap();
+
+    // wait for 1 seconds
+    thread::sleep(Duration::from_secs(1));
 
     stream.shutdown(Shutdown::Both).expect("shutdown call failed");
 }
