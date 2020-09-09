@@ -1,3 +1,9 @@
+//! The generators of the dispatcher model
+//!
+//! This generators will create a group of TCP connection with server, 
+//! and send message as quickly as they can
+//!
+
 use std::env;
 use std::net::{Shutdown, TcpStream};
 use std::io::{Write};
