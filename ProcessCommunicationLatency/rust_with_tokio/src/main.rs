@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             num += 1;
         }
-        rx2.recv().await.unwrap();
+        // rx2.recv().await.unwrap();
     });
 
     let _p2 = tokio::spawn(async move {
@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             num += 1;
         }
-        rx1.recv().await.unwrap();
+        // rx1.recv().await.unwrap();
     });
 
     let _result1 = _p1.await;
