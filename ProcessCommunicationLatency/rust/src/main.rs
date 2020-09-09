@@ -39,7 +39,7 @@ fn main() {
             tx1.send(msg).unwrap();
             num += 1;
         }
-        rx2.recv().unwrap();
+        // rx2.recv().unwrap();
     });
 
     let p2 = thread::spawn(move || {
@@ -54,7 +54,7 @@ fn main() {
             num += 1;
             tx2.send(msg).unwrap();
         }
-        rx1.recv().unwrap();
+        // rx1.recv().unwrap();
     });
 
     // let p3 = thread::spawn(move || {
