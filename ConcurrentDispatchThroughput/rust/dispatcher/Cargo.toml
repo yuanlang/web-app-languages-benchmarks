@@ -1,11 +1,23 @@
 [package]
-name = "dispatcher"
+name = "tcp_server"
 version = "0.1.0"
 authors = ["Lang Yuan <peacocker@163.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "server"
+path = "src/server.rs"
+
+[[bin]]
+name = "client"
+path = "src/client.rs"
+
+[[bin]]
+name = "receiver"
+path = "src/receiver.rs"
 
 [dependencies]
 tokio = { version = "0.2.22", features = ["full"] }
+config = "0.9"
 rand = "0.7.3"
