@@ -1,1 +1,1 @@
-killall tcp_receiver
+killall receiver
