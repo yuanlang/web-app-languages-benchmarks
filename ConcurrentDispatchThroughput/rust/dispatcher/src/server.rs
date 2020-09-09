@@ -25,6 +25,8 @@ use std::thread;
 use std::time::{Instant};
 use std::time::Duration;
 
+use log::{debug};
+
 use dispatcher::{Command, MSG_LEN, DEFAULT_SERVER_ADDR};
 
 #[tokio::main]
@@ -179,7 +181,7 @@ async fn do_dispatch(id: usize,
                 // parse the message
                 let t = msg[0];
                 let cmd: Command = t.into();
-                println!("got command type: {}", t);
+                debug!("got command type: {}", t);
 
                 match cmd {
                     Command::Start => {
@@ -188,7 +190,7 @@ async fn do_dispatch(id: usize,
                     Command::Data  => {
                         match stream.write(&msg).await {
                             Ok(_) => {
-                                println!("Sent msg to No.{} Receiver.", id);
+                                debug!("Sent msg to No.{} Receiver.", id);
                             },
                             Err(e) => {
                                 println!("Failed to write data through socket: {}", e);
@@ -269,7 +271,7 @@ async fn push_msg_to_channel(connection_id: u32, mut stream: tokio::net::TcpStre
             Command::Data => {
                 // Dispatch the message to receiver thread by the first byte
                 let dispath_num = buf[1] as u32;
-                println!("{} Get dispath num {}", connection_id, dispath_num);
+                debug!("{} Get dispath num {}", connection_id, dispath_num);
                 match channels_tx_map.get_mut(&dispath_num) {
                     Some(tx_copy) => {
                         if let Err(_) = tx_copy.send(buf).await {

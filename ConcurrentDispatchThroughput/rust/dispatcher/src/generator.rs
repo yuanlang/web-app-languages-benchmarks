@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Instant};
 use std::time::Duration;
+use log::{debug};
 
 use dispatcher::{Command, MSG_LEN, DEFAULT_SERVER_ADDR};
 
@@ -110,7 +111,7 @@ async fn do_send_and_close(generator_id: u8,
         send_bytes[0] = Command::Data as u8;
         send_bytes[1] = n;
         stream.write(&send_bytes).await.unwrap();
-        println!("{} Sent msg to No.{} receiver ", generator_id, n);
+        debug!("{} Sent msg to No.{} receiver ", generator_id, n);
 
         //increase the counter
         let mut num = counter.lock().unwrap();

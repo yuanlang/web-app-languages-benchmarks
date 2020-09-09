@@ -21,3 +21,4 @@ path = "src/receiver.rs"
 tokio = { version = "0.2.22", features = ["full"] }
 config = "0.9"
 rand = "0.7.3"
+log = "0.4"
