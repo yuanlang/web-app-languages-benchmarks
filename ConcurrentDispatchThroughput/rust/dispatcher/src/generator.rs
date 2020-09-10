@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let result = *disp_counter.lock().unwrap();
     let duration = start.elapsed();
 
-    println!("Total time taken seconds: {:?} ", duration.as_secs_f64());
+    println!("Total time taken in generator (seconds): {:?} ", duration.as_secs_f64());
     println!("Total sent messages: {} ", result);
 
     Ok(())
