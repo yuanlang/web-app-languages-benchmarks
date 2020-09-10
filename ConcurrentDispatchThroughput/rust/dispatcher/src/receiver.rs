@@ -6,6 +6,8 @@
 
 #![warn(rust_2018_idioms)]
 
+#[macro_use] extern crate log;
+
 use tokio::io::{AsyncReadExt};
 use tokio::net::TcpListener;
 
@@ -16,6 +18,10 @@ use dispatcher::{DEFAULT_RECV_ADDR};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::builder()
+        .format_timestamp_micros()
+        .init();
+
     // Allow passing an address to listen on as the first argument of this
     // program, but otherwise we'll just set up our TCP listener on
     // 127.0.0.1:14001 for connections.
@@ -27,7 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // connections. This TCP listener is bound to the address we determined
     // above and must be associated with an event loop.
     let mut listener = TcpListener::bind(&addr).await?;
-    println!("Listening on: {}", addr);
+    info!("Listening on: {}", addr);
 
     loop {
         // Asynchronously wait for an inbound socket.
@@ -53,7 +59,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .expect("failed to read data from socket");
 
                 if n == 0 {
-                    println!("msg length error!");
+                    info!("msg length error!");
                     return;
                 }
 

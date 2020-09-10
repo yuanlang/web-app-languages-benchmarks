@@ -6,6 +6,8 @@
 
 #![warn(rust_2018_idioms)]
 
+#[macro_use] extern crate log;
+
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener};
 use tokio::sync::mpsc;
@@ -31,16 +33,20 @@ use dispatcher::{Command, MSG_LEN, DEFAULT_SERVER_ADDR};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::builder()
+        .format_timestamp_micros()
+        .init();
+
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        println!("invalid number of connections");
-        println!("cargo run connect_num");
+        error!("invalid number of connections");
+        error!("cargo run connect_num");
         std::process::exit(0);
     }
 
     let arg1 = &args[1];
     let connect_num: u32 = arg1.parse().expect("Not a number!");
-    println!("Connection number: {}", connect_num);
+    info!("Connection number: {}", connect_num);
 
     let mut settings = config::Config::default();
     settings
@@ -52,7 +58,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Print out our settings (as a HashMap)
     let hash_setting = settings.try_into::<HashMap<String, String>>().unwrap();
-    println!("{:?}", hash_setting);
+    info!("{:?}", hash_setting);
 
     // Create a couple of Channels for connections, one channel for one connnection
     // key is the server id, from 1 to receiver_num
@@ -77,7 +83,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let disp_mutex = Arc::clone(&disp_counter);
         match TcpStream::connect(&server_addr).await {
             Ok(stream) => {
-                println!("{} Successfully connected to server {}", curr, &server_addr);
+                info!("{} Successfully connected to server {}", curr, &server_addr);
 
                 // get the channel receiver first
                 disp_thread_holder.push(tokio::spawn(async move {
@@ -85,7 +91,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }));
             },
             Err(e) => {
-                println!("Failed to connect: {}", e);
+                error!("Failed to connect: {}", e);
             }
         }
         curr = curr + 1;
@@ -102,7 +108,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // connections. This TCP listener is bound to the address we determined
     // above and must be associated with an event loop.
     let mut listener = TcpListener::bind(&addr).await?;
-    println!("Listening on: {}", addr);
+    info!("Listening on: {}", addr);
 
     // Process incomming connections
     let mut recv_thread_holder: Vec<JoinHandle<()>> = Vec::new();
@@ -114,7 +120,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // Asynchronously wait for an inbound socket.
         let (socket, _) = listener.accept().await?;
 
-        println!("recv connnection, id {}", connection_id);
+        info!("recv connnection, id {}", connection_id);
 
         // get a copy of senders hashmap, to allow the ownership move to 
         // the tokio thread and doesn't influence others
@@ -136,20 +142,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //everything is ok, send start message to connect
     for tx in tx_by_master_vec {
         if let Err(_) = tx.send(Command::Start) {
-            println!("the receiver dropped");
+            error!("the receiver dropped");
         }
     }
 
     for h in recv_thread_holder {
         let _r1 = h.await;
     }
-    println!("all recv thread exit");
+    info!("all recv thread exit");
 
     // // wait all connector and dispather threads quit
     // for h in disp_thread_holder {
     //     let _r1 = h.await;
     // }
-    // println!("all disp thread exit");
+    // info!("all disp thread exit");
 
     // get lock, copy the counters
     let recv_result = *recv_counter.lock().unwrap();
@@ -157,9 +163,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let duration = start.elapsed();
 
-    println!("Total time taken seconds: {:?} ", duration.as_secs_f64());
-    println!("Total received messages: {} ", recv_result);
-    println!("Total dispatched messages: {} ", disp_result);
+    info!("Total time taken seconds: {:?} ", duration.as_secs_f64());
+    info!("Total received messages: {} ", recv_result);
+    info!("Total dispatched messages: {} ", disp_result);
 
     thread::sleep(Duration::from_secs(5));
 
@@ -193,7 +199,7 @@ async fn do_dispatch(id: usize,
                                 debug!("Sent msg to No.{} Receiver.", id);
                             },
                             Err(e) => {
-                                println!("Failed to write data through socket: {}", e);
+                                error!("Failed to write data through socket: {}", e);
                             }
                         }
                         stream.flush().await.unwrap();
@@ -204,7 +210,7 @@ async fn do_dispatch(id: usize,
                     },
                     Command::Done  => {
                         // if this is the last Done message, quit current thread
-                        println!("dispatcher receive done message");
+                        info!("dispatcher receive done message");
                         stream.shutdown(Shutdown::Both).expect("shutdown call failed");
                         break;
                     },
@@ -233,7 +239,7 @@ async fn push_msg_to_channel(connection_id: u32, mut stream: tokio::net::TcpStre
         Ok(cmd) => {
             match cmd {
                 Command::Start => {
-                    println!("{} recv start msg from master", connection_id);
+                    info!("{} recv start msg from master", connection_id);
                     // send tcp message to generator
                     let mut send_bytes : Vec<u8> = (0..MSG_LEN).map(|_| { rand::random::<u8>() }).collect();
                     send_bytes[0] = Command::Start as u8;
@@ -259,7 +265,7 @@ async fn push_msg_to_channel(connection_id: u32, mut stream: tokio::net::TcpStre
             .expect("failed to read data from socket connected to the Generator");
 
         if n == 0 {
-            println!("receive zero length message {}", connection_id);
+            info!("receive zero length message {}", connection_id);
             return;
         }
 
@@ -268,7 +274,7 @@ async fn push_msg_to_channel(connection_id: u32, mut stream: tokio::net::TcpStre
         match cmd {
             // Command::Start => {
             //     // if the message is a start message, it will record as start time
-            //     println!("{} receive start message", connection_id)
+            //     info!("{} receive start message", connection_id)
             // },
             Command::Data => {
                 // Dispatch the message to receiver thread by the first byte
@@ -277,12 +283,12 @@ async fn push_msg_to_channel(connection_id: u32, mut stream: tokio::net::TcpStre
                 match channels_tx_map.get_mut(&dispath_num) {
                     Some(tx_copy) => {
                         if let Err(_) = tx_copy.send(buf).await {
-                            println!("receiver thread dropped");
+                            info!("receiver thread dropped");
                             return;
                         }
                     },
                     None => {
-                        println!("Get the wrong dispatch number {}", dispath_num);
+                        error!("Get the wrong dispatch number {}", dispath_num);
                     }
                 }
 
@@ -291,7 +297,7 @@ async fn push_msg_to_channel(connection_id: u32, mut stream: tokio::net::TcpStre
                 *num += 1;
             },
             Command::Done => {
-                println!("{} receive done message", connection_id);
+                info!("{} receive done message", connection_id);
                 // stream.shutdown(Shutdown::Both).expect("shutdown write failed");
                 break;
             },
