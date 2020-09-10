@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 4 {
         println!("invalid number of connections");
-        println!("cargo run connect_num repeat_num");
+        println!("cargo run connect_num receiver_num repeat_num");
         std::process::exit(0);
     }
 
@@ -99,6 +99,7 @@ async fn do_send_and_close(generator_id: u8,
     // let mut send_start : Vec<u8> = Vec::new();
     // send_start.push(Command::Start as u8);
     // stream.write(&send_start).await.unwrap();
+    // stream.flush().await.unwrap();
 
     // start the send work
     for _i in 0 .. repeat_num {
@@ -111,6 +112,7 @@ async fn do_send_and_close(generator_id: u8,
         send_bytes[0] = Command::Data as u8;
         send_bytes[1] = n;
         stream.write(&send_bytes).await.unwrap();
+        stream.flush().await.unwrap();
         debug!("{} Sent msg to No.{} receiver ", generator_id, n);
 
         //increase the counter

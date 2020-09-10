@@ -196,6 +196,7 @@ async fn do_dispatch(id: usize,
                                 println!("Failed to write data through socket: {}", e);
                             }
                         }
+                        stream.flush().await.unwrap();
                         
                         //increase the counter
                         let mut num = counter.lock().unwrap();
@@ -237,6 +238,7 @@ async fn push_msg_to_channel(connection_id: u32, mut stream: tokio::net::TcpStre
                     let mut send_bytes : Vec<u8> = (0..MSG_LEN).map(|_| { rand::random::<u8>() }).collect();
                     send_bytes[0] = Command::Start as u8;
                     stream.write(&send_bytes).await.unwrap();
+                    stream.flush().await.unwrap();
                 },
                 _ => {
                     //do nothing
