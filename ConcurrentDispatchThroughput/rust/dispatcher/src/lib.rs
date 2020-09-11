@@ -1,7 +1,7 @@
 //! A lib for dispatcher model benchmark 
 //!
 // mod tcp_server;
-
+use std::fmt;
 /// Default port that the server listens on.
 ///
 /// Used if no port is specified.
@@ -47,5 +47,13 @@ impl From<u8> for Command {
             0x3 => return Command::Done,
             _   => return Command::Unknown,
         };
+    }
+}
+
+impl fmt::Debug for Command {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Point")
+         .field("Command: ", &self)
+         .finish()
     }
 }

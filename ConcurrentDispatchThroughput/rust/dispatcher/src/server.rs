@@ -31,6 +31,158 @@ use log::{debug};
 
 use dispatcher::{Command, MSG_LEN, DEFAULT_SERVER_ADDR};
 
+#[derive(Debug)]
+struct Connector {
+    id: u32, 
+    stream: tokio::net::TcpStream, 
+    rx_from_master: tokio::sync::oneshot::Receiver<Command>,
+    channels_tx_map: std::collections::HashMap<u32, mpsc::Sender<[u8; MSG_LEN]>>,
+    counter: Arc<Mutex<usize>>
+}
+
+impl Connector {
+    /// Send received msg to message channel
+    /// 
+    /// Receive message from the Generator and send the message to the corresponed receiver
+    /// by using the first byte of the message
+    async fn run(mut self) {
+        // Wait master send Start message
+        match self.rx_from_master.await {
+            Ok(cmd) => {
+                match cmd {
+                    Command::Start => {
+                        info!("{} recv start msg from master", self.id);
+                        // send tcp message to generator
+                        let mut send_bytes : Vec<u8> = (0..MSG_LEN).map(|_| { rand::random::<u8>() }).collect();
+                        send_bytes[0] = Command::Start as u8;
+                        self.stream.write(&send_bytes).await.unwrap();
+                        self.stream.flush().await.unwrap();
+                    },
+                    _ => {
+                        //do nothing
+                    },
+                }
+            },
+            Err(_err) => {
+                // do nothing
+            },
+        }
+
+        // In a loop, read data from the socket and write the data back.
+        loop {
+            let mut buf = [0u8; MSG_LEN];
+            let n = self.stream
+                .read(&mut buf)
+                .await
+                .expect("failed to read data from socket connected to the Generator");
+
+            if n == 0 {
+                info!("receive zero length message {}", self.id);
+                return;
+            }
+
+            // parse the message
+            let cmd: Command = buf[0].into();
+            match cmd {
+                // Command::Start => {
+                //     // if the message is a start message, it will record as start time
+                //     info!("{} receive start message", connection_id)
+                // },
+                Command::Data => {
+                    // Dispatch the message to receiver thread by the first byte
+                    let dispath_num = buf[1] as u32;
+                    debug!("{} Get dispath num {}", self.id, dispath_num);
+                    match self.channels_tx_map.get_mut(&dispath_num) {
+                        Some(tx_copy) => {
+                            if let Err(_) = tx_copy.send(buf).await {
+                                info!("receiver thread dropped");
+                                return;
+                            }
+                        },
+                        None => {
+                            error!("Get the wrong dispatch number {}", dispath_num);
+                        }
+                    }
+
+                    //increase the counter
+                    let mut num = self.counter.lock().unwrap();
+                    *num += 1;
+                },
+                Command::Done => {
+                    info!("{} receive done message", self.id);
+                    // stream.shutdown(Shutdown::Both).expect("shutdown write failed");
+                    break;
+                },
+                _ => {
+                    // do nothing
+                },
+            }
+
+        }    
+    }
+}
+
+#[derive(Debug)]
+struct Dispatcher {
+    id: usize, 
+    rx: mpsc::Receiver<[u8; MSG_LEN]>, 
+    stream: TcpStream,
+    counter: Arc<Mutex<usize>>
+}
+
+impl Dispatcher {
+    /// Dispatch message to Receivers
+    ///
+    /// Receive messages from channel and dispatch them to the Receiver through 
+    /// the TCP connnections
+    async fn run(&mut self) {
+        loop {
+            // Read message from the channel and wait replay
+            match self.rx.recv().await {
+                Some(msg) => {
+                    // parse the message
+                    let t = msg[0];
+                    let cmd: Command = t.into();
+                    debug!("got command type: {}", t);
+
+                    match cmd {
+                        Command::Start => {
+                            //do nothing
+                        },
+                        Command::Data  => {
+                            match self.stream.write(&msg).await {
+                                Ok(_) => {
+                                    debug!("Sent msg to No.{} Receiver.", self.id);
+                                },
+                                Err(e) => {
+                                    error!("Failed to write data through socket: {}", e);
+                                }
+                            }
+                            self.stream.flush().await.unwrap();
+                            
+                            //increase the counter
+                            let mut num = self.counter.lock().unwrap();
+                            *num += 1;
+                        },
+                        Command::Done  => {
+                            // if this is the last Done message, quit current thread
+                            info!("dispatcher receive done message");
+                            self.stream.shutdown(Shutdown::Both).expect("shutdown call failed");
+                            break;
+                        },
+                        Command::Unknown => {
+                            // do nothing
+                        },
+                    }
+                },
+                None => {
+                    // do nothing
+                }
+            }
+        }    
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::builder()
@@ -84,10 +236,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         match TcpStream::connect(&server_addr).await {
             Ok(stream) => {
                 info!("{} Successfully connected to server {}", curr, &server_addr);
-
-                // get the channel receiver first
+                let mut dispatcher = Dispatcher {
+                    id: curr,
+                    rx: rx1, 
+                    stream: stream,
+                    counter: disp_mutex
+                };
+                // do dispatch work
                 disp_thread_holder.push(tokio::spawn(async move {
-                    do_dispatch(curr, rx1, stream, disp_mutex).await;
+                    dispatcher.run().await;
                 }));
             },
             Err(e) => {
@@ -128,11 +285,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let (sender, receiver) = oneshot::channel::<Command>();
         tx_by_master_vec.push(sender);
 
+        let connector = Connector {
+            id: connection_id, 
+            stream: socket, 
+            rx_from_master: receiver,
+            channels_tx_map: channels_tx_map_copy,
+            counter: recv_mutex
+        };
+
         // all clients to make progress concurrently, rather than
         // blocking one on completion of another. To achieve this we use the
         // `tokio::spawn` function to execute the work in the background.
         recv_thread_holder.push(tokio::spawn(async move {
-            push_msg_to_channel(connection_id, socket, receiver, channels_tx_map_copy, recv_mutex).await;
+            connector.run().await;
         }));
         connection_id += 1;
     }
@@ -170,141 +335,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     thread::sleep(Duration::from_secs(5));
 
     Ok(())
-}
-
-/// Dispatch message to Receivers
-///
-/// Receive messages from channel and dispatch them to the Receiver through 
-/// the TCP connnections
-async fn do_dispatch(id: usize, 
-        mut rx: mpsc::Receiver<[u8; MSG_LEN]>, 
-        mut stream: TcpStream,
-        counter: Arc<Mutex<usize>>) {
-    loop {
-        // Read message from the channel and wait replay
-        match rx.recv().await {
-            Some(msg) => {
-                // parse the message
-                let t = msg[0];
-                let cmd: Command = t.into();
-                debug!("got command type: {}", t);
-
-                match cmd {
-                    Command::Start => {
-                        //do nothing
-                    },
-                    Command::Data  => {
-                        match stream.write(&msg).await {
-                            Ok(_) => {
-                                debug!("Sent msg to No.{} Receiver.", id);
-                            },
-                            Err(e) => {
-                                error!("Failed to write data through socket: {}", e);
-                            }
-                        }
-                        stream.flush().await.unwrap();
-                        
-                        //increase the counter
-                        let mut num = counter.lock().unwrap();
-                        *num += 1;
-                    },
-                    Command::Done  => {
-                        // if this is the last Done message, quit current thread
-                        info!("dispatcher receive done message");
-                        stream.shutdown(Shutdown::Both).expect("shutdown call failed");
-                        break;
-                    },
-                    Command::Unknown => {
-                        // do nothing
-                    },
-                }
-            },
-            None => {
-                // do nothing
-            }
-        }
-    }    
-}
-
-/// Send received msg to message channel
-/// 
-/// Receive message from the Generator and send the message to the corresponed receiver
-/// by using the first byte of the message
-async fn push_msg_to_channel(connection_id: u32, mut stream: tokio::net::TcpStream, 
-        rx_from_master: tokio::sync::oneshot::Receiver<Command>,
-        mut channels_tx_map: std::collections::HashMap<u32, mpsc::Sender<[u8; MSG_LEN]>>,
-        counter: Arc<Mutex<usize>>) {
-    // Wait master send Start message
-    match rx_from_master.await {
-        Ok(cmd) => {
-            match cmd {
-                Command::Start => {
-                    info!("{} recv start msg from master", connection_id);
-                    // send tcp message to generator
-                    let mut send_bytes : Vec<u8> = (0..MSG_LEN).map(|_| { rand::random::<u8>() }).collect();
-                    send_bytes[0] = Command::Start as u8;
-                    stream.write(&send_bytes).await.unwrap();
-                    stream.flush().await.unwrap();
-                },
-                _ => {
-                    //do nothing
-                },
-            }
-        },
-        Err(_err) => {
-            // do nothing
-        },
-    }
-
-    // In a loop, read data from the socket and write the data back.
-    loop {
-        let mut buf = [0u8; MSG_LEN];
-        let n = stream
-            .read(&mut buf)
-            .await
-            .expect("failed to read data from socket connected to the Generator");
-
-        if n == 0 {
-            info!("receive zero length message {}", connection_id);
-            return;
-        }
-
-        // parse the message
-        let cmd: Command = buf[0].into();
-        match cmd {
-            // Command::Start => {
-            //     // if the message is a start message, it will record as start time
-            //     info!("{} receive start message", connection_id)
-            // },
-            Command::Data => {
-                // Dispatch the message to receiver thread by the first byte
-                let dispath_num = buf[1] as u32;
-                debug!("{} Get dispath num {}", connection_id, dispath_num);
-                match channels_tx_map.get_mut(&dispath_num) {
-                    Some(tx_copy) => {
-                        if let Err(_) = tx_copy.send(buf).await {
-                            info!("receiver thread dropped");
-                            return;
-                        }
-                    },
-                    None => {
-                        error!("Get the wrong dispatch number {}", dispath_num);
-                    }
-                }
-
-                //increase the counter
-                let mut num = counter.lock().unwrap();
-                *num += 1;
-            },
-            Command::Done => {
-                info!("{} receive done message", connection_id);
-                // stream.shutdown(Shutdown::Both).expect("shutdown write failed");
-                break;
-            },
-            _ => {
-                // do nothing
-            },
-        }
-
-    }    
 }

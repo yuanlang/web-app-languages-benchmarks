@@ -21,6 +21,7 @@ use std::time::{Instant};
 // use std::time::Duration;
 
 use dispatcher::{Command, MSG_LEN, DEFAULT_SERVER_ADDR};
+
 #[derive(Debug)]
 struct Generator {
     id: u8, 
