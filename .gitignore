@@ -5,3 +5,6 @@
 # for Erlang
 **/*.beam
 **/*.dump
+
+# for test result
+**/test.result*
