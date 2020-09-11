@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut settings = config::Config::default();
     settings
         // Add in `./Settings.toml`
-        .merge(config::File::with_name("../Settings")).unwrap()
+        .merge(config::File::with_name("Settings")).unwrap()
         // Add in settings from the environment (with a prefix of APP)
         // Eg.. `APP_DEBUG=1 ./target/app` would set the `debug` key
         .merge(config::Environment::with_prefix("APP")).unwrap();
@@ -159,11 +159,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     info!("all recv thread exit");
 
-    // // wait all connector and dispather threads quit
-    // for h in disp_thread_holder {
-    //     let _r1 = h.await;
-    // }
-    // info!("all disp thread exit");
+    drop(channels_tx_map);
+
+    // // wait all dispather threads quit
+    for h in disp_thread_holder {
+        let _r1 = h.await;
+    }
+    info!("all disp thread exit");
 
     // get lock, copy the counters
     let recv_result = *recv_counter.lock().unwrap();

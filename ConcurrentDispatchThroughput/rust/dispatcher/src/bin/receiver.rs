@@ -6,18 +6,16 @@
 
 #![warn(rust_2018_idioms)]
 
-#[macro_use] extern crate log;
-
-use tokio::io::{AsyncReadExt};
-use tokio::net::TcpListener;
+use std::io::{Read};
+use std::net::TcpListener;
+use std::thread;
 
 use std::env;
-use std::error::Error;
+use log::{debug, info, error};
 
 use dispatcher::{DEFAULT_RECV_ADDR};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() {
     env_logger::builder()
         .format_timestamp_micros()
         .init();
@@ -32,38 +30,36 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Next up we create a TCP listener which will listen for incoming
     // connections. This TCP listener is bound to the address we determined
     // above and must be associated with an event loop.
-    let mut listener = TcpListener::bind(&addr).await?;
+    let listener = TcpListener::bind(&addr).unwrap();
     info!("Listening on: {}", addr);
 
-    loop {
-        // Asynchronously wait for an inbound socket.
-        let (mut socket, _) = listener.accept().await?;
+    // Asynchronously wait for an inbound socket.
+    for socket in listener.incoming() {
+        match socket {
+            Ok(mut stream) => {
+                debug!("new connection");
+                thread::spawn(move || {
+                    let mut buf = [0; 1024];
 
-        // And this is where much of the magic of this server happens. We
-        // crucially want all clients to make progress concurrently, rather than
-        // blocking one on completion of another. To achieve this we use the
-        // `tokio::spawn` function to execute the work in the background.
-        //
-        // Essentially here we're executing a new task to run concurrently,
-        // which will allow all of our clients to be processed concurrently.
+                    // In a loop, read data from the socket and write the data back.
+                    loop {
+                        let n = stream
+                            .read(&mut buf)
+                            .expect("failed to read data from socket");
 
-        tokio::spawn(async move {
-            let mut buf = [0; 1024];
-            // let mut vec : Vec<u8> = Vec::new();
+                        if n == 0 {
+                            info!("socket closed!");
+                            return;
+                        }
 
-            // In a loop, read data from the socket and write the data back.
-            loop {
-                let n = socket
-                    .read(&mut buf)
-                    .await
-                    .expect("failed to read data from socket");
-
-                if n == 0 {
-                    info!("msg length error!");
-                    return;
-                }
-
+                    }
+                });
             }
-        });
+            Err(e) => { 
+                // connection failed
+                error!("connection failed {}", e);
+            }
+        }
     }
+
 }
