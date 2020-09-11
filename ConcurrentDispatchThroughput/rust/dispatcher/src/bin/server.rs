@@ -22,7 +22,7 @@ use std::time::{Instant};
 
 use log::{debug, info, error};
 
-use dispatcher::{Command, MSG_LEN, DEFAULT_SERVER_ADDR};
+use dispatcher::{Command, MSG_LEN, DEFAULT_SERVER_ADDR, DEFAULT_RECV_ADDR};
 use dispatcher::Dispatcher;
 use dispatcher::Connector;
 
@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
+    if args.len() < 3 {
         error!("invalid number of connections");
         error!("cargo run connect_num");
         std::process::exit(0);
@@ -42,6 +42,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let arg1 = &args[1];
     let connect_num: u32 = arg1.parse().expect("Not a number!");
     info!("Connection number: {}", connect_num);
+
+    let arg2 = &args[2];
+    let receiver_num: u32 = arg2.parse().expect("Not a number!");
+    info!("Receiver number: {}", receiver_num);
+
+    // Allow passing an address to listen on as the first argument of this
+    // program, but otherwise we'll just set up our TCP listener on
+    // 127.0.0.1:8888 for connections.
+    let listen_addr = env::args()
+        .nth(3)
+        .unwrap_or_else(|| DEFAULT_SERVER_ADDR.to_string());
 
     let mut settings = config::Config::default();
     settings
@@ -57,7 +68,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Create a couple of Channels for connections, one channel for one connnection
     // key is the server id, from 1 to receiver_num
-    let receiver_num : u32 = 10;
     let mut channels_tx_map : HashMap<u32, mpsc::Sender<[u8; MSG_LEN]>>  = HashMap::new();
     let mut channels_rx_vec: VecDeque<mpsc::Receiver<[u8; MSG_LEN]>> = VecDeque::new();
 
@@ -73,12 +83,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut disp_thread_holder: Vec<JoinHandle<()>> = Vec::new();
     let disp_counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
     while let Some(rx1) = channels_rx_vec.pop_front() {
-        let server_name = format!("{}{}", "server" , curr);
-        let server_addr = hash_setting[&server_name].clone();
+        // let server_name = format!("{}{}", "server" , curr);
+        // let server_addr = hash_setting[&server_name].clone();
         let disp_mutex = Arc::clone(&disp_counter);
-        match TcpStream::connect(&server_addr).await {
+        match TcpStream::connect(&DEFAULT_RECV_ADDR).await {
             Ok(stream) => {
-                info!("{} Successfully connected to server {}", curr, &server_addr);
+                info!("{} Successfully connected to server {}", curr, &DEFAULT_RECV_ADDR);
                 let mut dispatcher = Dispatcher::new(
                     curr,
                     rx1, 
@@ -97,18 +107,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         curr = curr + 1;
     }
 
-    // Allow passing an address to listen on as the first argument of this
-    // program, but otherwise we'll just set up our TCP listener on
-    // 127.0.0.1:8888 for connections.
-    let addr = env::args()
-        .nth(2)
-        .unwrap_or_else(|| DEFAULT_SERVER_ADDR.to_string());
-
     // Create a TCP listener which will listen for incoming
     // connections. This TCP listener is bound to the address we determined
     // above and must be associated with an event loop.
-    let mut listener = TcpListener::bind(&addr).await?;
-    info!("Listening on: {}", addr);
+    let mut listener = TcpListener::bind(&listen_addr).await?;
+    info!("Listening on: {}", listen_addr);
 
     // Process incomming connections
     let mut recv_thread_holder: Vec<JoinHandle<()>> = Vec::new();
