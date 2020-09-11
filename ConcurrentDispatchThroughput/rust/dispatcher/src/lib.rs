@@ -1,7 +1,16 @@
 //! A lib for dispatcher model benchmark 
 //!
-// mod tcp_server;
 use std::fmt;
+
+pub mod dispatcher;
+pub use dispatcher::Dispatcher;
+
+pub mod connector;
+pub use connector::Connector;
+
+pub mod generator;
+pub use generator::Generator;
+
 /// Default port that the server listens on.
 ///
 /// Used if no port is specified.
