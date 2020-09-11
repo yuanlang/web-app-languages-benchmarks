@@ -21,6 +21,65 @@ use std::time::{Instant};
 use std::time::Duration;
 
 use dispatcher::{Command, MSG_LEN, DEFAULT_SERVER_ADDR};
+#[derive(Debug)]
+struct Generator {
+    id: u8, 
+    repeat_num: u32, 
+    stream: TcpStream, 
+    counter: Arc<Mutex<usize>>,
+    receiver_num: u8,
+}
+
+impl Generator {
+    fn run(&mut self) -> Result<(), Box<dyn Error>>  {
+        // wait recv start message from server
+        let mut buf = [0u8; MSG_LEN];
+        let n = self.stream.read(&mut buf).unwrap();
+
+        if n == 0 {
+            info!("receive zero length message {}", self.id);
+        }
+            
+        info!("{} receive start message from server", self.id);
+
+        // let mut send_start : Vec<u8> = Vec::new();
+        // send_start.push(Command::Start as u8);
+        // stream.write(&send_start).await.unwrap();
+        // stream.flush().await.unwrap();
+
+        // start the send work
+        for _i in 0 .. self.repeat_num {
+            let mut send_bytes : Vec<u8> = (0..MSG_LEN).map(|_| { rand::random::<u8>() }).collect();
+
+            // gen the msg type
+            // let mut rng = thread_rng();
+            let n: u8 = rand::random::<u8>() % self.receiver_num + 1;
+
+            send_bytes[0] = Command::Data as u8;
+            send_bytes[1] = n;
+            self.stream.write(&send_bytes).unwrap();
+            self.stream.flush().unwrap();
+            debug!("{} Sent msg to No.{} receiver ", self.id, n);
+
+            //increase the counter
+            let mut num = self.counter.lock().unwrap();
+            *num += 1;
+        }
+
+        // send the Done command to server
+        let mut send_done : Vec<u8> = Vec::new();
+        send_done.push(Command::Done as u8);
+        self.stream.write(&send_done).unwrap();
+        self.stream.flush().unwrap();
+
+        self.stream.shutdown(Shutdown::Write).expect("shutdown write failed");
+
+        // wait for 10 seconds
+        thread::sleep(Duration::from_secs(5));
+
+        Ok(())
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -50,14 +109,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let disp_counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
     let start = Instant::now();
     let mut gene_thread_holder = Vec::new();
-    for curr in 0 .. connect_num {
+    for curr in 1 .. connect_num + 1 {
         match TcpStream::connect(&DEFAULT_SERVER_ADDR) {
             Ok(stream) => {
                 info!("No.{} Successfully connected to server in port 8888", curr);
                 let disp_mutex = Arc::clone(&disp_counter);
+                let send_num = repeat_num / connect_num as u32;
+                let mut generator = Generator {
+                    id: curr, 
+                    repeat_num: send_num, 
+                    stream: stream, 
+                    counter: disp_mutex,
+                    receiver_num: receiver_num,
+                };
                 gene_thread_holder.push(thread::spawn(move || {
-                    do_send_and_close(curr+1, repeat_num / connect_num as u32, stream, 
-                        disp_mutex, receiver_num);
+                    generator.run().unwrap();
                 }));
             },
             Err(e) => {
@@ -79,56 +145,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!("Total sent messages: {} ", result);
 
     Ok(())
-}
-
-fn do_send_and_close(generator_id: u8, 
-        repeat_num: u32, 
-        mut stream: TcpStream, 
-        counter: Arc<Mutex<usize>>,
-        receiver_num: u8) {
-    // wait recv start message from server
-    let mut buf = [0u8; MSG_LEN];
-    let n = stream.read(&mut buf).unwrap();
-
-    if n == 0 {
-        info!("receive zero length message {}", generator_id);
-    }
-         
-    info!("{} receive start message from server", generator_id);
-
-    // let mut send_start : Vec<u8> = Vec::new();
-    // send_start.push(Command::Start as u8);
-    // stream.write(&send_start).await.unwrap();
-    // stream.flush().await.unwrap();
-
-    // start the send work
-    for _i in 0 .. repeat_num {
-        let mut send_bytes : Vec<u8> = (0..MSG_LEN).map(|_| { rand::random::<u8>() }).collect();
-
-        // gen the msg type
-        // let mut rng = thread_rng();
-        let n: u8 = rand::random::<u8>() % receiver_num + 1;
-
-        send_bytes[0] = Command::Data as u8;
-        send_bytes[1] = n;
-        stream.write(&send_bytes).unwrap();
-        stream.flush().unwrap();
-        debug!("{} Sent msg to No.{} receiver ", generator_id, n);
-
-        //increase the counter
-        let mut num = counter.lock().unwrap();
-        *num += 1;
-    }
-
-    // send the Done command to server
-    let mut send_done : Vec<u8> = Vec::new();
-    send_done.push(Command::Done as u8);
-    stream.write(&send_done).unwrap();
-    stream.flush().unwrap();
-
-    stream.shutdown(Shutdown::Write).expect("shutdown write failed");
-
-    // wait for 10 seconds
-    thread::sleep(Duration::from_secs(5));
-
 }
