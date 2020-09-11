@@ -18,7 +18,7 @@ use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Instant};
-use std::time::Duration;
+// use std::time::Duration;
 
 use dispatcher::{Command, MSG_LEN, DEFAULT_SERVER_ADDR};
 #[derive(Debug)]
@@ -31,22 +31,8 @@ struct Generator {
 }
 
 impl Generator {
-    fn run(&mut self) -> Result<(), Box<dyn Error>>  {
-        // wait recv start message from server
-        let mut buf = [0u8; MSG_LEN];
-        let n = self.stream.read(&mut buf).unwrap();
-
-        if n == 0 {
-            info!("receive zero length message {}", self.id);
-        }
-            
-        info!("{} receive start message from server", self.id);
-
-        // let mut send_start : Vec<u8> = Vec::new();
-        // send_start.push(Command::Start as u8);
-        // stream.write(&send_start).await.unwrap();
-        // stream.flush().await.unwrap();
-
+    /// Repeat send Data message to the Server
+    fn repeat_send(&mut self) -> Result<(), Box<dyn Error>>  {
         // start the send work
         for _i in 0 .. self.repeat_num {
             let mut send_bytes : Vec<u8> = (0..MSG_LEN).map(|_| { rand::random::<u8>() }).collect();
@@ -66,16 +52,40 @@ impl Generator {
             *num += 1;
         }
 
-        // send the Done command to server
+        Ok(())
+    }
+
+    /// Send the Done message to the Server after all generator work done
+    fn send_done(&mut self) -> Result<(), Box<dyn Error>>  {
         let mut send_done : Vec<u8> = Vec::new();
         send_done.push(Command::Done as u8);
         self.stream.write(&send_done).unwrap();
         self.stream.flush().unwrap();
 
         self.stream.shutdown(Shutdown::Write).expect("shutdown write failed");
+        Ok(())
+    }    
+
+    /// the main work of generator
+    fn run(&mut self) -> Result<(), Box<dyn Error>>  {
+        // wait recv start message from server
+        let mut buf = [0u8; MSG_LEN];
+        let n = self.stream.read(&mut buf).unwrap();
+
+        if n == 0 {
+            info!("receive zero length message {}", self.id);
+        }
+            
+        info!("{} receive start message from server", self.id);
+
+        // start the send work
+        self.repeat_send().unwrap();
+
+        // send the Done command to server
+        self.send_done().unwrap();
 
         // wait for 10 seconds
-        thread::sleep(Duration::from_secs(5));
+        // thread::sleep(Duration::from_secs(5));
 
         Ok(())
     }
