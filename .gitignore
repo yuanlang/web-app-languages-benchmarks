@@ -1,0 +1,7 @@
+# for the Rust
+**/Cargo.lock
+**/target
+
+# for Erlang
+**/*.beam
+**/*.dump
