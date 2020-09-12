@@ -1,11 +1,11 @@
-fn go() {
+fn run() {
 	std::thread::sleep(std::time::Duration::from_millis(10000));
 }
 
 fn main() {
     let mut cnt = 0;
     loop {
-        match std::thread::Builder::new().spawn(go) {
+        match std::thread::Builder::new().spawn(run) {
             Ok(_) => cnt += 1,
             Err(e) => {
                 println!("error: {:?} {:?}", e.kind(), e);
