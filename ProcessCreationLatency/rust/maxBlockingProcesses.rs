@@ -12,6 +12,7 @@ fn main() {
     let mut txs = Vec::new();
     for _i in 0..num {
         let (tx, rx) = mpsc::channel::<String>();
+        // save it to prevent broken channel
         txs.push(tx);
         thread::spawn(move || {
             let _received = rx.recv().expect("Unable to receive from channel");
@@ -22,6 +23,7 @@ fn main() {
 
     println!("Total time taken: {:?}", duration);
 
+    // send message to prevent thread panic
     for tx in txs {
         let val = String::from("hi");
         tx.send(val).unwrap();
