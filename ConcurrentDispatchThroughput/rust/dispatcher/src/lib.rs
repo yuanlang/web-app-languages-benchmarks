@@ -89,3 +89,6 @@ pub fn parse_timestamp(s: &str) -> SystemTime {
 /// eg.
 ///   2020-09-20T03:31:02.361565Z
 pub const TIMESTAMP_LEN: usize = 27;
+
+
+pub const TIMEOUT_THRESHOLD: f32 = 5.0;

@@ -91,6 +91,7 @@ impl Connector {
                         Some(tx_copy) => {
                             if let Err(_) = tx_copy.send(buf).await {
                                 info!("receiver thread dropped");
+                                drop(self.channels_tx_map);
                                 return;
                             }
                         },

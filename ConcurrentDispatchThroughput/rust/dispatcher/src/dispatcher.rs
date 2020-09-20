@@ -1,4 +1,4 @@
-use crate::{Command, MSG_LEN, TIMESTAMP_LEN, parse_timestamp};
+use crate::{Command, MSG_LEN, TIMESTAMP_LEN, parse_timestamp, TIMEOUT_THRESHOLD};
 use tokio::sync::mpsc;
 // use tokio::sync::oneshot;
 use tokio::net::{TcpStream};
@@ -13,6 +13,7 @@ use std::time::SystemTime;
 pub struct Dispatcher {
     id: usize, 
     rx: mpsc::Receiver<[u8; MSG_LEN]>, 
+    tx: tokio::sync::mpsc::Sender<Command>,
     stream: TcpStream,
     counter: Arc<Mutex<usize>>
 }
@@ -21,11 +22,13 @@ impl Dispatcher {
     /// Create a new dispatcher
     pub fn new(id: usize, 
         rx: mpsc::Receiver<[u8; MSG_LEN]>, 
+        tx: tokio::sync::mpsc::Sender<Command>,
         stream: TcpStream,
         counter: Arc<Mutex<usize>>) -> Dispatcher {
             Dispatcher {
                 id : id,
                 rx: rx,
+                tx: tx,
                 stream: stream,
                 counter: counter
             }
@@ -60,8 +63,19 @@ impl Dispatcher {
                             // got the time difference
                             let systime = parse_timestamp(ts);
                             match SystemTime::now().duration_since(systime) {
-                                Ok(n)  => debug!("spend {} seconds to dispatch this message!", n.as_micros() as f32/1000000.0),
-                                Err(_) => error!("SystemTime before start time!"),
+                                Ok(n)  => {
+                                    let diff = n.as_micros() as f32 / 1000000.0;
+                                    debug!("spend {} seconds to dispatch this message!", diff);
+                                    if diff > TIMEOUT_THRESHOLD {
+                                        debug!("threshold reached!");
+                                        if let Err(_) = self.tx.send(Command::Done).await {
+                                            error!("cannot send message");
+                                        }
+                                    }
+                                },
+                                Err(_) => {
+                                    error!("SystemTime before start time!")
+                                },
                             }
 
                             // write msg to socket
@@ -82,9 +96,9 @@ impl Dispatcher {
                         Command::Done  => {
                             // ! cannnot guarantee every dispatcher could receive the Done message 
                             // if this is the last Done message, quit current thread
-                            info!("dispatcher receive done message");
-                            // self.stream.shutdown(Shutdown::Both).expect("shutdown call failed");
-                            // break;
+                            info!("{} dispatcher receive done message", self.id);
+                            self.stream.shutdown(Shutdown::Both).expect("shutdown call failed");
+                            break;
                         },
                         Command::Unknown => {
                             // do nothing
