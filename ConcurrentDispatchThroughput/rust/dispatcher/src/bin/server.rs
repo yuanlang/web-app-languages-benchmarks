@@ -164,7 +164,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     drop(channels_tx_map);
 
-    // // wait all dispather threads quit
+    // wait all dispather threads quit
     for h in disp_thread_holder {
         let _r1 = h.await;
     }

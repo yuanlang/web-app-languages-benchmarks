@@ -1,6 +1,8 @@
 //! A lib for dispatcher model benchmark 
 //!
 use std::fmt;
+use std::time::SystemTime;
+use humantime::{format_rfc3339_micros, parse_rfc3339};
 
 pub mod dispatcher;
 pub use dispatcher::Dispatcher;
@@ -66,3 +68,24 @@ impl fmt::Debug for Command {
          .finish()
     }
 }
+
+/// get currrent time, and transfer to string
+/// return type: 
+///     String
+pub fn get_timestamp() -> String {
+    let now = std::time::SystemTime::now();
+    let ts = format_rfc3339_micros(now);
+    format!("{}", ts)
+}
+
+/// parse timestamp from string
+/// return type:
+///     SystemTime
+pub fn parse_timestamp(s: &str) -> SystemTime {
+    parse_rfc3339(s).unwrap()
+}
+
+/// length of time stamp
+/// eg.
+///   2020-09-20T03:31:02.361565Z
+pub const TIMESTAMP_LEN: usize = 27;

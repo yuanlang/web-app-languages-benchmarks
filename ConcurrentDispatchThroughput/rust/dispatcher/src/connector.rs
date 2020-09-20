@@ -1,5 +1,5 @@
 
-use crate::{Command, MSG_LEN};
+use crate::{Command, MSG_LEN, get_timestamp, TIMESTAMP_LEN};
 use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use log::{debug, error, info};
@@ -70,6 +70,8 @@ impl Connector {
                 return;
             }
 
+            let tm = get_timestamp();
+
             // parse the message
             let cmd: Command = buf[0].into();
             match cmd {
@@ -80,7 +82,11 @@ impl Connector {
                 Command::Data => {
                     // Dispatch the message to receiver thread by the first byte
                     let dispath_num = buf[1] as u32;
-                    debug!("{} Get dispath num {}", self.id, dispath_num);
+                    let tmb = tm.as_bytes();
+                    let len = tmb.len();
+                    debug!("tmb length {}", len);
+                    buf[2..2+TIMESTAMP_LEN].clone_from_slice(tmb);
+                    debug!("{} Get dispath num {} {}", self.id, dispath_num, tm);
                     match self.channels_tx_map.get_mut(&dispath_num) {
                         Some(tx_copy) => {
                             if let Err(_) = tx_copy.send(buf).await {
