@@ -21,32 +21,28 @@ fn main() {
     let n: u32 = arg1.parse().expect("Not a number!");
     println!("Thread number: {}", n);
 
-    let send_bytes : Vec<u8> = (0..MSG_LENGTH).map(|_| { rand::random::<u8>() }).collect();
-    //println!("{:?}", send_bytes_1);
-
     let tx_counter = Arc::new(Mutex::new(0));
 
     let (tx_to_aggregator, rx_by_aggregator) = mpsc::channel::<usize>();
 
-    //create aggregator to calculate the count
+    //spawn aggregator to calculate the count
     let counter1 = Arc::clone(&tx_counter);
     thread::spawn(move || {
         while let Ok(count) = rx_by_aggregator.recv() {
-            // received message means one round finish, an increase of 1
+            // received message and add it to the counter
             let mut num = counter1.lock().unwrap();
             *num += count;
         }
     });
 
     // Create thread pool according to the parameter
+    let send_bytes : Vec<u8> = (0..MSG_LENGTH).map(|_| { rand::random::<u8>() }).collect();
     let start = Instant::now();
     let mut server_thread_holder = vec![];
     let mut client_thread_holder = vec![];
     for _i in 0 .. n {
         let (tx_to_client, rx_by_server) = mpsc::channel::<Vec<u8>>();
         let (tx_to_server, rx_by_client) = mpsc::channel::<Vec<u8>>();
-        // let tx_to_client = mpsc::Sender::clone(&tx);
-        // let counter1 = Arc::clone(&tx_counter);
         let send_bytes_copy = send_bytes.clone();
         let tx_to_aggregator_copy = tx_to_aggregator.clone();
         
@@ -57,11 +53,9 @@ fn main() {
             let mut counter: usize = 0;
             while let Ok(msg) = rx_by_server.recv() {
                 // received message means one round finish, an increase of 1
-                // let mut num = counter1.lock().unwrap();
-                // *num += 1;
                 counter += 1;
                 if counter == FREQUENT {
-                    // send message to aggragetor
+                    // send message to aggregator when the counter is 100 and reset it to 0
                     tx_to_aggregator_copy.send(FREQUENT).unwrap();
                     counter = 0;
                 }

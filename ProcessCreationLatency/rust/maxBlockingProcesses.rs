@@ -21,7 +21,7 @@ fn main() {
 
     let duration = start.elapsed();
 
-    println!("Total time taken: {:?}", duration);
+    println!("Total time taken: {:?}", duration.as_secs_f64());
 
     // send message to prevent thread panic
     for tx in txs {

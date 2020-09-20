@@ -1,9 +1,6 @@
 use std::env;
-// use std::thread;
 use std::error::Error;
-//use std::sync::Arc;
 use std::time::{Instant};
-// use std::time::Duration;
 
 use tokio::sync::mpsc;
 
@@ -26,42 +23,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let msg_length: usize = arg2.parse().expect("Not a number!");
     println!("Repeat times: {}, data length: {}", repeat_num, msg_length);
 
-    let send_bytes_1 : Vec<u8> = (0..msg_length).map(|_| { random::<u8>() }).collect();
-    let send_bytes_2 : Vec<u8> = (0..msg_length).map(|_| { random::<u8>() }).collect();
+    let mut send_bytes_1 : Vec<u8> = (0..msg_length).map(|_| { random::<u8>() }).collect();
+    let mut send_bytes_2 : Vec<u8> = (0..msg_length).map(|_| { random::<u8>() }).collect();
 
     let (mut tx1, mut rx1) = mpsc::channel::<Vec<u8>>(msg_length * MSG_QUEUE_LEN);
     let (mut tx2, mut rx2) = mpsc::channel::<Vec<u8>>(msg_length * MSG_QUEUE_LEN);
 
     let start = Instant::now();
     let _p1 = tokio::spawn(async move {
-        let mut num = 0;
-        if let Err(_) = tx1.send(send_bytes_1).await {
-            println!("the receiver dropped");
-        }
-        num += 1;
-        while num < repeat_num {
-            let msg = rx2.recv().await.unwrap();
-            if let Err(_) = tx1.send(msg).await {
-                println!("the receiver dropped");
+        for _num in 0 .. repeat_num {
+            if let Err(_) = tx1.send(send_bytes_1).await {
+                println!("the channel 1 receiver dropped");
+                break;
             }
-            num += 1;
+            send_bytes_1 = rx2.recv().await.unwrap();
         }
-        // rx2.recv().await.unwrap();
     });
 
     let _p2 = tokio::spawn(async move {
-        let mut num = 0;
-        if let Err(_) = tx2.send(send_bytes_2).await {
-            println!("the receiver dropped");
-        }
-        while num < repeat_num{
-            let msg = rx1.recv().await.unwrap();
-            if let Err(_) = tx2.send(msg).await {
-                println!("the receiver dropped");
+        for _num in 0 .. repeat_num{
+            if let Err(_) = tx2.send(send_bytes_2).await {
+                println!("the channel 2 receiver dropped");
+                break;
             }
-            num += 1;
+            send_bytes_2 = rx1.recv().await.unwrap();
         }
-        // rx1.recv().await.unwrap();
     });
 
     let _result1 = _p1.await;

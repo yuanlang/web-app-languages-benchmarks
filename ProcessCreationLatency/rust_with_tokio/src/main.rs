@@ -1,5 +1,5 @@
 use std::env;
-use std::sync::mpsc;
+use tokio::sync::mpsc;
 // use std::thread;
 use std::time::{Instant};
 use tokio::task;
@@ -14,22 +14,21 @@ async fn main() {
     let mut txs = Vec::new();
     let mut handles = Vec::new();
     for _i in 0..num {
-        let (tx, rx) = mpsc::channel::<String>();
+        let (tx, mut rx) = mpsc::channel::<String>(10);
         txs.push(tx);
         let join_handle: task::JoinHandle<_> = tokio::spawn(async move {
-            let _received = rx.recv().expect("Unable to receive from channel");
-            // println!("{} Got: {}", _i, _received);
+            rx.recv().await.expect("Unable to receive from channel");
         });
         handles.push(join_handle);
     }
 
     let duration = start.elapsed();
 
-    println!("Total time taken: {:?}", duration);
+    println!("Total time taken: {:?}", duration.as_secs_f64());
 
-    for tx in txs {
+    for mut tx in txs {
         let val = String::from("hi");
-        tx.send(val).unwrap();
+        tx.send(val).await.unwrap();
     }
 
     for handle in handles {

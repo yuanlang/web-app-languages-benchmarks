@@ -17,8 +17,8 @@ fn is_print(n: i32) -> bool {
     }
 }
 
-async fn task_that_takes_a_second() {
-    // println!("hello {}", num);
+async fn task_sleep_long_time() {
+    // sleep a long time
     time::delay_for(time::Duration::from_secs(10000)).await
 }
 
@@ -28,10 +28,10 @@ async fn main() -> std::io::Result<()> {
     let mut i = 1;
     loop {
         tokio::spawn(async move {
-            task_that_takes_a_second().await;
+            task_sleep_long_time().await;
         });
         
-        if is_print(i) {       
+        if is_print(i) {
             let ts = SystemTime::now().duration_since(UNIX_EPOCH)
                               .expect("Clock may have gone backwards");
             writeln!(file, "ts(sec): {:?} thd no: {}", ts.as_secs(), i)?;
