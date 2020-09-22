@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 // use tokio::sync::oneshot;
 use tokio::net::{TcpStream};
 use std::sync::{Arc, Mutex};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use tokio::io::{AsyncWriteExt};
 use std::net::Shutdown;
 use std::str;
@@ -65,9 +65,9 @@ impl Dispatcher {
                             match SystemTime::now().duration_since(systime) {
                                 Ok(n)  => {
                                     let diff = n.as_micros() as f32 / 1000000.0;
-                                    debug!("spend {} seconds to dispatch this message!", diff);
+                                    info!("msg dispatched, id: {} spend: {} seconds from: {}!", id, diff, ts);
                                     if diff > TIMEOUT_THRESHOLD {
-                                        debug!("threshold reached!");
+                                        warn!("threshold {} seconds reached!", TIMEOUT_THRESHOLD);
                                         if let Err(_) = self.tx.send(Command::Done).await {
                                             error!("cannot send message");
                                         }
