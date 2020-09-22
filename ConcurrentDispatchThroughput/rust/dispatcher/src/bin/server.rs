@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut curr : usize = 1;
     let mut disp_thread_holder: Vec<JoinHandle<()>> = Vec::new();
     let disp_counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
-    let (done_sender, mut done_receiver) = mpsc::channel::<Command>(1);
+    let (done_sender, _done_receiver) = mpsc::channel::<Command>(1);
     while let Some(rx1) = channels_rx_vec.pop_front() {
         // let server_name = format!("{}{}", "server" , curr);
         // let server_addr = hash_setting[&server_name].clone();
@@ -161,38 +161,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // recv message from dispatcher
-    loop {
-        // Read message from the channel and wait replay
-        match done_receiver.recv().await {
-            Some(cmd) => {
-                match cmd {
-                    Command::Done  => {
-                        info!("receive done message from dispatcher");
-                        // send done to all dispatchers
-                        for (_, tx1) in channels_tx_map.iter_mut() {
-                            let mut buf = [0u8; MSG_LEN];
-                            buf[0] = Command::Done as u8;
-                            if let Err(_) = tx1.send(buf).await {
-                                error!("cannot send message");
-                            }
-                        }
-                        break;
-                    },
-                    _ => {
-                        // do nothing
-                        info!("receive other message");
-                    },
-                }
-            },
-            None => {
-                info!("receive none message");
-            }
-        }
+    for h in recv_thread_holder {
+        let _r1 = h.await;
     }
+    info!("all recv thread exit");
 
     drop(channels_tx_map);
-    
+
+    // // wait all dispather threads quit
+    for h in disp_thread_holder {
+        let _r1 = h.await;
+    }
+    info!("all disp thread exit");
+
     // get lock, copy the counters
     let recv_result = *recv_counter.lock().unwrap();
     let disp_result = *disp_counter.lock().unwrap();
@@ -203,18 +184,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!("Total received messages: {} ", recv_result);
     info!("Total dispatched messages: {} ", disp_result);
 
-    // wait all dispather threads quit
-    for h in disp_thread_holder {
-        let _r1 = h.await;
-    }
-    info!("all dispatch thread exit");
-
-
-    // // wait all connector threads quit
-    // for h in recv_thread_holder {
-    //     let _r1 = h.await;
-    // }
-    // info!("all recv thread exit");
+    // thread::sleep(Duration::from_secs(5));
 
     Ok(())
+
 }
