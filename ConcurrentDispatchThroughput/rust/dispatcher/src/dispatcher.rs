@@ -71,6 +71,8 @@ impl Dispatcher {
                                         if let Err(_) = self.tx.send(Command::Done).await {
                                             error!("cannot send message");
                                         }
+                                        // it doesn't work, terminate it
+                                        return;
                                     }
                                 },
                                 Err(_) => {

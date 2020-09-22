@@ -34,8 +34,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
-        error!("invalid number of connections");
-        error!("cargo run connect_num");
+        error!("invalid number of connectors or dispatchers");
+        error!("cargo run connector_num dispatcher_num");
         std::process::exit(0);
     }
 
