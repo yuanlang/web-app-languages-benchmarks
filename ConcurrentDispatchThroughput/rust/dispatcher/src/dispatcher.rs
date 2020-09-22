@@ -72,7 +72,7 @@ impl Dispatcher {
                                             error!("cannot send message");
                                         }
                                         // it doesn't work, terminate it
-                                        return;
+                                        // return;
                                     }
                                 },
                                 Err(_) => {
